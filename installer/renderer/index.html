@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Agent Studio Installer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="installer">
+      <aside class="steps">
+        <strong>AI Agent Studio</strong>
+        <button class="active">1. Проверка</button>
+        <button>2. Модель</button>
+        <button>3. Прокси</button>
+        <button>4. Установка</button>
+      </aside>
+      <section class="content">
+        <header>
+          <h1>Установка окружения</h1>
+          <p>Проверка Docker, Python, Node.js и Git перед сборкой OpenHands-форка.</p>
+        </header>
+        <div id="checks" class="checks"></div>
+        <section class="settings">
+          <label>
+            Путь установки
+            <input value="~/ai-agent-studio" />
+          </label>
+          <label>
+            Прокси HTTP/SOCKS
+            <input placeholder="http://127.0.0.1:7890" />
+          </label>
+          <label>
+            Модель по умолчанию
+            <select>
+              <option>qwen2.5-coder:7b</option>
+              <option>deepseek-coder:6.7b</option>
+              <option>deepseek-coder:33b</option>
+              <option>llama3.2:3b</option>
+              <option>openrouter/auto</option>
+            </select>
+          </label>
+        </section>
+        <footer>
+          <button id="run-check">Проверить систему</button>
+          <button class="primary">Подготовить установку</button>
+        </footer>
+      </section>
+    </main>
+    <script src="./installer.js"></script>
+  </body>
+</html>
+

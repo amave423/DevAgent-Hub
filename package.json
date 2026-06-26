@@ -1,0 +1,22 @@
+{
+  "name": "ai-agent-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Custom OpenHands-based interface layer for managing multi-agent workflows.",
+  "workspaces": [
+    "apps/web",
+    "installer"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace apps/web run dev",
+    "build:web": "npm --workspace apps/web run build",
+    "lint:web": "npm --workspace apps/web run lint",
+    "dev:installer": "npm --workspace installer run dev",
+    "start:api": "uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --app-dir services/agent-api",
+    "typecheck": "npm --workspace apps/web run typecheck"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
+

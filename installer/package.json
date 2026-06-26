@@ -1,0 +1,12 @@
+{
+  "name": "@ai-agent-studio/installer",
+  "version": "0.1.0",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "dev": "electron ."
+  },
+  "dependencies": {
+    "electron": "^42.5.0"
+  }
+}
