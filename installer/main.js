@@ -1,9 +1,11 @@
 const { app, BrowserWindow, dialog, ipcMain } = require("electron");
+const { spawn } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
 const path = require("node:path");
 
 const {
   buildInstallExecutionSteps,
+  buildOpenHandsLaunchStep,
   buildProcessEnv,
   checkSystem,
   getInstallerDefaults,
@@ -12,6 +14,7 @@ const {
 const { InstallCommandRunner } = require("./install-runner");
 
 let activeInstall = null;
+let activeOpenHands = null;
 
 function createWindow() {
   const window = new BrowserWindow({
@@ -39,6 +42,7 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
+  activeOpenHands?.child.kill();
   if (process.platform !== "darwin") app.quit();
 });
 
@@ -93,6 +97,84 @@ ipcMain.handle("install:cancel", async (_event, runId) => {
   return { ok: true };
 });
 
+ipcMain.handle("openhands:start", async (event, rawSettings) => {
+  if (activeOpenHands) {
+    return {
+      ok: false,
+      error: "OpenHands уже запущен",
+      runId: activeOpenHands.runId,
+      url: activeOpenHands.url,
+    };
+  }
+
+  const runId = randomUUID();
+  const step = buildOpenHandsLaunchStep(rawSettings);
+  const child = spawn(step.command, step.args, {
+    cwd: step.cwd,
+    env: {
+      ...buildProcessEnv(rawSettings),
+      SERVE_FRONTEND: "true",
+    },
+    shell: false,
+    windowsHide: true,
+  });
+
+  activeOpenHands = {
+    runId,
+    child,
+    url: step.url,
+  };
+
+  sendOpenHandsEvent(event.sender, runId, {
+    type: "process-start",
+    message: `OpenHands запускается: ${step.url}`,
+    url: step.url,
+    command: [step.command, ...step.args].join(" "),
+  });
+
+  child.stdout.on("data", (chunk) => {
+    sendOpenHandsEvent(event.sender, runId, {
+      type: "stdout",
+      message: chunk.toString(),
+    });
+  });
+
+  child.stderr.on("data", (chunk) => {
+    sendOpenHandsEvent(event.sender, runId, {
+      type: "stderr",
+      message: chunk.toString(),
+    });
+  });
+
+  child.on("error", (error) => {
+    sendOpenHandsEvent(event.sender, runId, {
+      type: "process-error",
+      message: error.message,
+    });
+    activeOpenHands = null;
+  });
+
+  child.on("close", (code) => {
+    sendOpenHandsEvent(event.sender, runId, {
+      type: "process-exit",
+      message: `OpenHands остановлен с кодом ${code}`,
+      exitCode: code,
+    });
+    activeOpenHands = null;
+  });
+
+  return { ok: true, runId, url: step.url };
+});
+
+ipcMain.handle("openhands:stop", async (_event, runId) => {
+  if (!activeOpenHands || activeOpenHands.runId !== runId) {
+    return { ok: false, error: "Запущенный OpenHands не найден" };
+  }
+
+  activeOpenHands.child.kill();
+  return { ok: true };
+});
+
 async function runInstall(runId, rawSettings, sender) {
   try {
     sendInstallEvent(sender, runId, {
@@ -141,6 +223,15 @@ async function runInstall(runId, rawSettings, sender) {
 function sendInstallEvent(sender, runId, payload) {
   if (sender.isDestroyed()) return;
   sender.send("install:event", {
+    runId,
+    timestamp: new Date().toISOString(),
+    ...payload,
+  });
+}
+
+function sendOpenHandsEvent(sender, runId, payload) {
+  if (sender.isDestroyed()) return;
+  sender.send("openhands:event", {
     runId,
     timestamp: new Date().toISOString(),
     ...payload,

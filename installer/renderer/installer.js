@@ -5,6 +5,9 @@ const browsePathButton = document.getElementById("browse-path");
 const prepareButton = document.getElementById("prepare-install");
 const startInstallButton = document.getElementById("start-install");
 const cancelInstallButton = document.getElementById("cancel-install");
+const startOpenHandsButton = document.getElementById("start-openhands");
+const stopOpenHandsButton = document.getElementById("stop-openhands");
+const openHandsLinkElement = document.getElementById("openhands-link");
 const formElement = document.getElementById("settings-form");
 const resultPanelElement = document.getElementById("result-panel");
 const resultStatusElement = document.getElementById("result-status");
@@ -23,14 +26,18 @@ const cloudBaseUrlInput = document.getElementById("cloud-base-url");
 
 let checksState = [];
 let activeRunId = null;
+let activeOpenHandsRunId = null;
 
 runCheckButton.addEventListener("click", runSystemCheck);
 browsePathButton.addEventListener("click", selectInstallPath);
 prepareButton.addEventListener("click", prepareInstall);
 startInstallButton.addEventListener("click", startInstall);
 cancelInstallButton.addEventListener("click", cancelInstall);
+startOpenHandsButton.addEventListener("click", startOpenHands);
+stopOpenHandsButton.addEventListener("click", stopOpenHands);
 cloudProviderInput.addEventListener("change", syncCloudBaseUrl);
 window.installerApi.onInstallEvent(handleInstallEvent);
+window.installerApi.onOpenHandsEvent(handleOpenHandsEvent);
 
 boot();
 
@@ -132,6 +139,33 @@ async function cancelInstall() {
   await window.installerApi.cancelInstall(activeRunId);
 }
 
+async function startOpenHands() {
+  installPanelElement.classList.remove("hidden");
+  appendLog("Запуск OpenHands...");
+  setOpenHandsRunning(true);
+
+  try {
+    const response = await window.installerApi.startOpenHands(formPayload());
+    if (!response.ok) {
+      throw new Error(response.error || "Не удалось запустить OpenHands");
+    }
+
+    activeOpenHandsRunId = response.runId;
+    openHandsLinkElement.href = response.url;
+    openHandsLinkElement.classList.remove("hidden");
+  } catch (error) {
+    appendLog(`Ошибка запуска OpenHands: ${error.message}`, "error");
+    setOpenHandsRunning(false);
+  }
+}
+
+async function stopOpenHands() {
+  if (!activeOpenHandsRunId) return;
+  stopOpenHandsButton.disabled = true;
+  appendLog("Остановка OpenHands...");
+  await window.installerApi.stopOpenHands(activeOpenHandsRunId);
+}
+
 function formPayload() {
   return Object.fromEntries(new FormData(formElement).entries());
 }
@@ -221,6 +255,41 @@ function handleInstallEvent(event) {
   }
 }
 
+function handleOpenHandsEvent(event) {
+  if (activeOpenHandsRunId && event.runId !== activeOpenHandsRunId) return;
+
+  switch (event.type) {
+    case "process-start":
+      installStatusElement.textContent = "OpenHands запущен";
+      appendLog(event.message);
+      if (event.url) {
+        openHandsLinkElement.href = event.url;
+        openHandsLinkElement.classList.remove("hidden");
+      }
+      break;
+    case "stdout":
+      appendLog(event.message.trimEnd());
+      break;
+    case "stderr":
+      appendLog(event.message.trimEnd(), "warning");
+      break;
+    case "process-error":
+      installStatusElement.textContent = "Ошибка OpenHands";
+      appendLog(event.message, "error");
+      setOpenHandsRunning(false);
+      activeOpenHandsRunId = null;
+      break;
+    case "process-exit":
+      installStatusElement.textContent = "OpenHands остановлен";
+      appendLog(event.message);
+      setOpenHandsRunning(false);
+      activeOpenHandsRunId = null;
+      break;
+    default:
+      if (event.message) appendLog(event.message);
+  }
+}
+
 function resetInstallLog() {
   installPanelElement.classList.remove("hidden");
   installStatusElement.textContent = "Запуск";
@@ -245,6 +314,11 @@ function setInstallRunning(isRunning) {
   startInstallButton.disabled = isRunning;
   prepareButton.disabled = isRunning;
   cancelInstallButton.disabled = !isRunning;
+}
+
+function setOpenHandsRunning(isRunning) {
+  startOpenHandsButton.disabled = isRunning;
+  stopOpenHandsButton.disabled = !isRunning;
 }
 
 function syncCloudBaseUrl() {

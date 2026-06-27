@@ -7,9 +7,16 @@ contextBridge.exposeInMainWorld("installerApi", {
   prepareInstall: (settings) => ipcRenderer.invoke("install:prepare", settings),
   startInstall: (settings) => ipcRenderer.invoke("install:start", settings),
   cancelInstall: (runId) => ipcRenderer.invoke("install:cancel", runId),
+  startOpenHands: (settings) => ipcRenderer.invoke("openhands:start", settings),
+  stopOpenHands: (runId) => ipcRenderer.invoke("openhands:stop", runId),
   onInstallEvent: (callback) => {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on("install:event", listener);
     return () => ipcRenderer.removeListener("install:event", listener);
+  },
+  onOpenHandsEvent: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("openhands:event", listener);
+    return () => ipcRenderer.removeListener("openhands:event", listener);
   },
 });

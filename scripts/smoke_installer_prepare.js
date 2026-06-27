@@ -3,7 +3,10 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 
-const { prepareInstall } = require("../installer/install-service");
+const {
+  buildOpenHandsLaunchStep,
+  prepareInstall,
+} = require("../installer/install-service");
 
 async function main() {
   const installPath = await fs.mkdtemp(path.join(os.tmpdir(), "devagent-installer-"));
@@ -25,6 +28,7 @@ async function main() {
     const config = JSON.parse(await fs.readFile(configPath, "utf8"));
     const envFile = await fs.readFile(envPath, "utf8");
     const plan = JSON.parse(await fs.readFile(planPath, "utf8"));
+    const launchStep = buildOpenHandsLaunchStep({ installPath });
 
     assert.equal(result.ok, true);
     assert.equal(config.runtime.runnerMode, "mock");
@@ -33,6 +37,8 @@ async function main() {
     assert.match(envFile, /HTTP_PROXY=http:\/\/127\.0\.0\.1:7890/);
     assert.equal(plan.modelId, "openrouter-auto");
     assert.equal(Array.isArray(plan.commands), true);
+    assert.equal(launchStep.url, "http://127.0.0.1:3000");
+    assert.equal(launchStep.args.includes("openhands.app_server.app:app"), true);
 
     console.log("Installer prepare smoke: OK");
     console.log(`files=${result.files.length}`);

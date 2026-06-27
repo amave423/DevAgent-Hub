@@ -228,13 +228,20 @@ button:focus-visible {
 }
 
 .input-row button,
-footer button {
+footer button,
+.app-link {
   height: 38px;
   padding: 0 14px;
   border: 1px solid #bdc8cd;
   border-radius: 7px;
   background: #ffffff;
   color: #1f2528;
+}
+
+.app-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
 }
 
 footer {
@@ -247,6 +254,10 @@ footer button.primary {
   border-color: #147a63;
   background: #147a63;
   color: #ffffff;
+}
+
+.app-link.hidden {
+  display: none;
 }
 
 .result-panel,

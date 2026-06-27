@@ -207,6 +207,33 @@ function buildProcessEnv(rawSettings) {
   return env;
 }
 
+function buildOpenHandsLaunchStep(rawSettings, port = 3000) {
+  const settings = normalizeSettings(rawSettings);
+  const openHandsDir = path.join(settings.installPath, "vendor", "OpenHands");
+  const python = process.platform === "win32"
+    ? path.join(openHandsDir, ".venv", "Scripts", "python.exe")
+    : path.join(openHandsDir, ".venv", "bin", "python");
+
+  return {
+    id: "openhands-start",
+    label: "Запуск OpenHands",
+    cwd: settings.installPath,
+    command: python,
+    args: [
+      "-m",
+      "uvicorn",
+      "openhands.app_server.app:app",
+      "--app-dir",
+      openHandsDir,
+      "--host",
+      "127.0.0.1",
+      "--port",
+      String(port),
+    ],
+    url: `http://127.0.0.1:${port}`,
+  };
+}
+
 function commandCandidate(command, args) {
   return { command, args };
 }
@@ -505,6 +532,7 @@ function buildReadme(settings, commands) {
 
 module.exports = {
   buildInstallExecutionSteps,
+  buildOpenHandsLaunchStep,
   buildProcessEnv,
   checkSystem,
   getInstallerDefaults,
