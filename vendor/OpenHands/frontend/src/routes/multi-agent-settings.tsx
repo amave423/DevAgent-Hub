@@ -3,6 +3,7 @@ import {
   Bot,
   ChevronDown,
   ChevronUp,
+  GripVertical,
   Loader2,
   Play,
   Plus,
@@ -36,6 +37,9 @@ export default function MultiAgentSettingsScreen() {
   const [taskText, setTaskText] = React.useState(DEFAULT_TASK);
   const [taskState, setTaskState] = React.useState<TaskState | null>(null);
   const [logs, setLogs] = React.useState<AgentLogEvent[]>([]);
+  const [draggedAgentId, setDraggedAgentId] = React.useState<string | null>(
+    null,
+  );
   const eventSourceRef = React.useRef<EventSource | null>(null);
 
   React.useEffect(() => {
@@ -192,8 +196,17 @@ export default function MultiAgentSettingsScreen() {
               agent={agent}
               config={config}
               isActive={taskState?.activeAgentId === agent.id}
+              isDragging={draggedAgentId === agent.id}
               isFirst={index === 0}
               isLast={index === config.agents.length - 1}
+              onDragStart={() => setDraggedAgentId(agent.id)}
+              onDragEnd={() => setDraggedAgentId(null)}
+              onDrop={() => {
+                if (draggedAgentId && draggedAgentId !== agent.id) {
+                  reorderAgent(draggedAgentId, agent.id, config, updateConfig);
+                }
+                setDraggedAgentId(null);
+              }}
               onPatch={(patch) =>
                 updateConfig((current) => ({
                   ...current,
@@ -408,8 +421,12 @@ function AgentCard({
   agent,
   config,
   isActive,
+  isDragging,
   isFirst,
   isLast,
+  onDragStart,
+  onDragEnd,
+  onDrop,
   onPatch,
   onMove,
   onDelete,
@@ -417,21 +434,38 @@ function AgentCard({
   agent: AgentDefinition;
   config: AgentsConfig;
   isActive: boolean;
+  isDragging: boolean;
   isFirst: boolean;
   isLast: boolean;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  onDrop: () => void;
   onPatch: (patch: Partial<AgentDefinition>) => void;
   onMove: (direction: -1 | 1) => void;
   onDelete: () => void;
 }) {
   return (
     <article
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={onDrop}
       className={[
         "rounded-sm border bg-tertiary p-4",
         isActive ? "border-primary" : "border-[#3D4046]",
+        isDragging ? "opacity-60" : "",
       ].join(" ")}
     >
       <div className="mb-4 flex items-start justify-between gap-4">
         <label className="flex min-w-0 flex-1 items-start gap-3">
+          <span
+            aria-hidden="true"
+            title="Перетащить"
+            className="mt-1 cursor-grab text-tertiary-alt active:cursor-grabbing"
+          >
+            <GripVertical size={16} />
+          </span>
           <input
             type="checkbox"
             className="mt-1 h-4 w-4 accent-primary"
@@ -572,6 +606,28 @@ function moveAgent(
     const agents = current.agents.slice();
     const [agent] = agents.splice(index, 1);
     agents.splice(targetIndex, 0, agent);
+    return { ...current, agents };
+  });
+}
+
+function reorderAgent(
+  draggedAgentId: string,
+  targetAgentId: string,
+  config: AgentsConfig,
+  updateConfig: (updater: (current: AgentsConfig) => AgentsConfig) => void,
+) {
+  const sourceIndex = config.agents.findIndex(
+    (agent) => agent.id === draggedAgentId,
+  );
+  const targetIndex = config.agents.findIndex(
+    (agent) => agent.id === targetAgentId,
+  );
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return;
+
+  updateConfig((current) => {
+    const agents = current.agents.slice();
+    const [draggedAgent] = agents.splice(sourceIndex, 1);
+    agents.splice(targetIndex, 0, draggedAgent);
     return { ...current, agents };
   });
 }
