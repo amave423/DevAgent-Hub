@@ -13,3 +13,5 @@ __pycache__/
 !.env.sample
 *.log
 coverage/
+devagent-install-plan.json
+README_INSTALL.txt

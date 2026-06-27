@@ -3,51 +3,114 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI Agent Studio Installer</title>
+    <title>DevAgent Hub Installer</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <main class="installer">
-      <aside class="steps">
-        <strong>AI Agent Studio</strong>
-        <button class="active">1. Проверка</button>
-        <button>2. Модель</button>
-        <button>3. Прокси</button>
-        <button>4. Установка</button>
+      <aside class="steps" aria-label="Этапы установки">
+        <strong>DevAgent Hub</strong>
+        <button class="active" type="button">1. Проверка</button>
+        <button type="button">2. Модель</button>
+        <button type="button">3. Прокси</button>
+        <button type="button">4. Подготовка</button>
       </aside>
+
       <section class="content">
-        <header>
-          <h1>Установка окружения</h1>
-          <p>Проверка Docker, Python, Node.js и Git перед сборкой OpenHands-форка.</p>
+        <header class="page-header">
+          <div>
+            <h1>Установка окружения</h1>
+            <p>Проверка инструментов и подготовка конфигурации OpenHands-форка.</p>
+          </div>
+          <button id="run-check" class="icon-button" type="button" title="Проверить систему" aria-label="Проверить систему">
+            ↻
+          </button>
         </header>
-        <div id="checks" class="checks"></div>
-        <section class="settings">
-          <label>
-            Путь установки
-            <input value="~/ai-agent-studio" />
+
+        <section class="checks-panel" aria-labelledby="checks-title">
+          <div class="section-title">
+            <h2 id="checks-title">Система</h2>
+            <span id="checks-summary">Ожидание проверки</span>
+          </div>
+          <div id="checks" class="checks"></div>
+        </section>
+
+        <form id="settings-form" class="settings">
+          <label class="wide">
+            Папка проекта
+            <span class="input-row">
+              <input id="install-path" name="installPath" autocomplete="off" />
+              <button id="browse-path" type="button">Выбрать</button>
+            </span>
           </label>
-          <label>
-            Прокси HTTP/SOCKS
-            <input placeholder="http://127.0.0.1:7890" />
+
+          <label class="wide">
+            Репозиторий
+            <input id="repo-url" name="repoUrl" autocomplete="off" />
           </label>
+
           <label>
             Модель по умолчанию
-            <select>
-              <option>qwen2.5-coder:7b</option>
-              <option>deepseek-coder:6.7b</option>
-              <option>deepseek-coder:33b</option>
-              <option>llama3.2:3b</option>
-              <option>openrouter/auto</option>
+            <select id="model-id" name="modelId">
+              <option value="ollama-qwen25-coder-7b">qwen2.5-coder:7b</option>
+              <option value="ollama-deepseek-coder-67b">deepseek-coder:6.7b</option>
+              <option value="ollama-deepseek-coder-33b">deepseek-coder:33b</option>
+              <option value="ollama-llama32-3b">llama3.2:3b</option>
+              <option value="openrouter-auto">openrouter/auto</option>
+              <option value="openai-gpt-4o-mini">gpt-4o-mini</option>
             </select>
           </label>
+
+          <label>
+            Режим запуска
+            <select id="runner-mode" name="runnerMode">
+              <option value="auto">auto</option>
+              <option value="live">live</option>
+              <option value="mock">mock</option>
+            </select>
+          </label>
+
+          <label>
+            Cloud provider
+            <select id="cloud-provider" name="cloudProvider">
+              <option value="openrouter">OpenRouter</option>
+              <option value="openai">OpenAI</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+
+          <label>
+            Base URL
+            <input id="cloud-base-url" name="cloudBaseUrl" placeholder="https://openrouter.ai/api/v1" autocomplete="off" />
+          </label>
+
+          <label class="wide">
+            HTTP/SOCKS прокси
+            <input id="proxy-url" name="proxyUrl" placeholder="http://127.0.0.1:7890" autocomplete="off" />
+          </label>
+
+          <label class="wide">
+            API key
+            <input id="api-key" name="apiKey" type="password" autocomplete="off" />
+          </label>
+        </form>
+
+        <section id="result-panel" class="result-panel hidden" aria-live="polite">
+          <div class="section-title">
+            <h2>План</h2>
+            <span id="result-status"></span>
+          </div>
+          <div id="warnings" class="warnings"></div>
+          <div id="files" class="files"></div>
+          <ol id="commands" class="commands"></ol>
         </section>
+
         <footer>
-          <button id="run-check">Проверить систему</button>
-          <button class="primary">Подготовить установку</button>
+          <button id="prepare-install" class="primary" type="button">Подготовить установку</button>
         </footer>
       </section>
     </main>
+
     <script src="./installer.js"></script>
   </body>
 </html>
-

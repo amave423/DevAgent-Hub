@@ -1,14 +1,19 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const path = require("node:path");
-const { execFile } = require("node:child_process");
+
+const {
+  checkSystem,
+  getInstallerDefaults,
+  prepareInstall,
+} = require("./install-service");
 
 function createWindow() {
   const window = new BrowserWindow({
-    width: 980,
-    height: 720,
-    minWidth: 880,
-    minHeight: 620,
-    title: "AI Agent Studio Installer",
+    width: 1080,
+    height: 760,
+    minWidth: 940,
+    minHeight: 660,
+    title: "DevAgent Hub Installer",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -31,30 +36,19 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-ipcMain.handle("system:check", async () => {
-  const checks = await Promise.all([
-    checkCommand("git", ["--version"]),
-    checkCommand("docker", ["--version"]),
-    checkCommand("node", ["--version"]),
-    checkCommand("python", ["--version"]),
-  ]);
+ipcMain.handle("installer:defaults", async () => getInstallerDefaults());
+ipcMain.handle("system:check", async () => checkSystem());
 
-  return [
-    { id: "git", label: "Git", ...checks[0] },
-    { id: "docker", label: "Docker", ...checks[1] },
-    { id: "node", label: "Node.js 20+", ...checks[2] },
-    { id: "python", label: "Python 3.10+", ...checks[3] },
-  ];
+ipcMain.handle("dialog:select-install-dir", async () => {
+  const result = await dialog.showOpenDialog({
+    title: "Выберите папку проекта",
+    properties: ["openDirectory", "createDirectory"],
+  });
+
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
 });
 
-function checkCommand(command, args) {
-  return new Promise((resolve) => {
-    execFile(command, args, { windowsHide: true, timeout: 8000 }, (error, stdout, stderr) => {
-      resolve({
-        ok: !error,
-        output: (stdout || stderr || error?.message || "").trim(),
-      });
-    });
-  });
-}
-
+ipcMain.handle("install:prepare", async (_event, rawSettings) => {
+  return prepareInstall(rawSettings);
+});

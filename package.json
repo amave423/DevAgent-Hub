@@ -15,7 +15,8 @@
     "start:api": "uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --app-dir services/agent-api",
     "typecheck": "npm --workspace apps/web run typecheck",
     "smoke:agent-studio": ".venv\\Scripts\\python.exe scripts\\smoke_agent_studio.py",
-    "smoke:openhands-app": "vendor\\OpenHands\\.venv\\Scripts\\python.exe scripts\\smoke_openhands_app.py"
+    "smoke:openhands-app": "vendor\\OpenHands\\.venv\\Scripts\\python.exe scripts\\smoke_openhands_app.py",
+    "smoke:installer": "node scripts\\smoke_installer_prepare.js"
   },
   "engines": {
     "node": ">=20"
