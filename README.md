@@ -77,3 +77,11 @@ $env:AGENT_STUDIO_OPENROUTER_API_KEY = "..."
 ```
 
 Ollama uses `http://localhost:11434` by default and does not need an API key.
+
+To smoke-test the integrated OpenHands Agent Studio API without booting the full OpenHands app:
+
+```powershell
+npm run smoke:agent-studio
+```
+
+The smoke test starts a temporary FastAPI app on `127.0.0.1:8021`, exercises `/api/v1/agents/config`, `/api/v1/agents/run`, `/api/v1/agents/status/{task_id}` and `/api/v1/agents/logs/{task_id}`, then shuts itself down.

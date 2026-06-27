@@ -4,6 +4,7 @@ build/
 .vite/
 .venv/
 venv/
+.openhands/
 __pycache__/
 *.pyc
 .env
