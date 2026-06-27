@@ -73,7 +73,8 @@ async def check_ollama_model(
     base_url = (model.baseUrl or 'http://localhost:11434').rstrip('/')
     if base_url not in ollama_cache:
         try:
-            async with httpx.AsyncClient(timeout=3) as client:
+            timeout = httpx.Timeout(1.0, connect=0.5, read=1.0, write=1.0, pool=0.5)
+            async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
                 response = await client.get(f'{base_url}/api/tags')
                 response.raise_for_status()
                 data = response.json()

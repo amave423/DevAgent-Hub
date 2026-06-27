@@ -188,7 +188,8 @@ After dependencies are installed:
 $env:AGENT_STUDIO_CONFIG_PATH = "$PWD\configs\agents.json"
 $env:OH_PERSISTENCE_DIR = "$PWD\.openhands"
 $env:SERVE_FRONTEND = "true"
-.\vendor\OpenHands\.venv\Scripts\python.exe -m uvicorn openhands.app_server.app:app --app-dir vendor\OpenHands --host 127.0.0.1 --port 3000
+Push-Location vendor\OpenHands
+.\.venv\Scripts\python.exe -m uvicorn openhands.app_server.app:app --app-dir . --host 127.0.0.1 --port 3000
 ```
 
 Open `http://127.0.0.1:3000`.

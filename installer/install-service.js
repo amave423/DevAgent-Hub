@@ -236,14 +236,14 @@ function buildOpenHandsLaunchStep(rawSettings, port = 3000) {
   return {
     id: "openhands-start",
     label: "Запуск OpenHands",
-    cwd: settings.installPath,
+    cwd: openHandsDir,
     command: python,
     args: [
       "-m",
       "uvicorn",
       "openhands.app_server.app:app",
       "--app-dir",
-      openHandsDir,
+      ".",
       "--host",
       "127.0.0.1",
       "--port",
@@ -526,7 +526,8 @@ function buildInstallCommands(settings) {
       ".\\vendor\\OpenHands\\.venv\\Scripts\\python.exe scripts\\smoke_openhands_app.py",
       '$env:AGENT_STUDIO_CONFIG_PATH = "$PWD\\configs\\agents.json"',
       '$env:OH_PERSISTENCE_DIR = "$PWD\\.openhands"',
-      ".\\vendor\\OpenHands\\.venv\\Scripts\\python.exe -m uvicorn openhands.app_server.app:app --app-dir vendor\\OpenHands --host 127.0.0.1 --port 3000",
+      "Push-Location vendor\\OpenHands",
+      ".\\.venv\\Scripts\\python.exe -m uvicorn openhands.app_server.app:app --app-dir . --host 127.0.0.1 --port 3000",
     ];
   }
 
@@ -546,7 +547,8 @@ function buildInstallCommands(settings) {
     "./vendor/OpenHands/.venv/bin/python scripts/smoke_openhands_app.py",
     "export AGENT_STUDIO_CONFIG_PATH=\"$PWD/configs/agents.json\"",
     "export OH_PERSISTENCE_DIR=\"$PWD/.openhands\"",
-    "./vendor/OpenHands/.venv/bin/python -m uvicorn openhands.app_server.app:app --app-dir vendor/OpenHands --host 127.0.0.1 --port 3000",
+    "cd vendor/OpenHands",
+    "./.venv/bin/python -m uvicorn openhands.app_server.app:app --app-dir . --host 127.0.0.1 --port 3000",
   ];
 }
 
@@ -623,7 +625,8 @@ function buildWindowsStartScript(settings) {
     "Import-EnvFile $SecretsFile",
     "$env:SERVE_FRONTEND = 'true'",
     "$Python = Join-Path $ProjectRoot 'vendor\\OpenHands\\.venv\\Scripts\\python.exe'",
-    "& $Python -m uvicorn openhands.app_server.app:app --app-dir (Join-Path $ProjectRoot 'vendor\\OpenHands') --host 127.0.0.1 --port 3000",
+    "Set-Location (Join-Path $ProjectRoot 'vendor\\OpenHands')",
+    "& $Python -m uvicorn openhands.app_server.app:app --app-dir . --host 127.0.0.1 --port 3000",
     "",
   ].join("\n");
 }
@@ -667,11 +670,11 @@ function buildSystemdUnit(settings) {
     "",
     "[Service]",
     "Type=simple",
-    `WorkingDirectory=${systemdEscape(projectRoot)}`,
+    `WorkingDirectory=${systemdEscape(openHandsDir)}`,
     `EnvironmentFile=-${systemdEscape(path.join(projectRoot, ".env.local"))}`,
     `EnvironmentFile=-${systemdEscape(path.join(projectRoot, "services", "secrets.env"))}`,
     "Environment=SERVE_FRONTEND=true",
-    `ExecStart=${systemdEscape(python)} -m uvicorn openhands.app_server.app:app --app-dir ${systemdEscape(openHandsDir)} --host 127.0.0.1 --port 3000`,
+    `ExecStart=${systemdEscape(python)} -m uvicorn openhands.app_server.app:app --app-dir . --host 127.0.0.1 --port 3000`,
     "Restart=on-failure",
     "RestartSec=5",
     "",
