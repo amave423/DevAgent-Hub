@@ -47,6 +47,7 @@ def main() -> int:
 
     try:
         config = wait_for_config(opener, base_url)
+        health = get_json(opener, f'{base_url}/models/health')
         config['runtime']['runnerMode'] = 'mock'
         saved = post_json(opener, f'{base_url}/config', config)
         run_response = post_json(opener, f'{base_url}/run', {'task': 'OpenHands app smoke test'})
@@ -63,6 +64,7 @@ def main() -> int:
 
         assert saved['runtime']['runnerMode'] == 'mock'
         assert len(saved['models']) > 0
+        assert len(health['models']) == len(config['models'])
         assert run_response['status'] == 'queued'
         assert final_state['status'] == 'completed'
         assert final_state['progress'] == 100
@@ -72,6 +74,7 @@ def main() -> int:
 
         print('OpenHands app smoke: OK')
         print(f"models={len(saved['models'])}")
+        print(f"health={len(health['models'])}")
         print(f"task={run_response['taskId']}")
         print(f"status={final_state['status']} progress={final_state['progress']}")
         return 0

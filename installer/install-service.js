@@ -1,14 +1,17 @@
 const { execFile } = require("node:child_process");
 const fs = require("node:fs/promises");
+const fsSync = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const DEFAULT_REPO_URL = "https://github.com/amave423/DevAgent-Hub.git";
 
-function getInstallerDefaults() {
+function getInstallerDefaults(isPackaged = false) {
   return {
-    installPath: PROJECT_ROOT,
+    installPath: isPackaged
+      ? path.join(os.homedir(), "DevAgent Hub")
+      : PROJECT_ROOT,
     repoUrl: DEFAULT_REPO_URL,
     platform: process.platform,
   };
@@ -60,17 +63,27 @@ async function prepareInstall(rawSettings) {
   await fs.mkdir(settings.installPath, { recursive: true });
 
   const configsDir = path.join(settings.installPath, "configs");
+  const serviceDir = path.join(settings.installPath, "services");
   const envPath = path.join(settings.installPath, ".env.local");
   const configPath = path.join(configsDir, "agents.json");
   const planPath = path.join(settings.installPath, "devagent-install-plan.json");
   const readmePath = path.join(settings.installPath, "README_INSTALL.txt");
 
   await fs.mkdir(configsDir, { recursive: true });
+  await fs.mkdir(serviceDir, { recursive: true });
 
   const agentsConfig = await buildAgentsConfig(settings);
   const envFile = buildEnvFile(settings, configPath);
   const commands = buildInstallCommands(settings);
+  const serviceFiles = buildServiceFiles(settings);
   const warnings = await buildWarnings(settings);
+  const generatedFiles = [
+    configPath,
+    envPath,
+    planPath,
+    readmePath,
+    ...serviceFiles.map((file) => file.path),
+  ];
   const plan = {
     generatedAt: new Date().toISOString(),
     installPath: settings.installPath,
@@ -79,8 +92,9 @@ async function prepareInstall(rawSettings) {
     runnerMode: settings.runnerMode,
     proxyConfigured: Boolean(settings.proxyUrl),
     cloudProvider: settings.cloudProvider,
-    files: [configPath, envPath, readmePath],
+    files: generatedFiles,
     commands,
+    serviceCommands: buildServiceCommands(settings),
     warnings,
   };
 
@@ -88,12 +102,21 @@ async function prepareInstall(rawSettings) {
   await fs.writeFile(envPath, envFile, "utf8");
   await fs.writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
   await fs.writeFile(readmePath, buildReadme(settings, commands), "utf8");
+  await Promise.all(
+    serviceFiles.map(async (file) => {
+      await fs.writeFile(file.path, file.content, "utf8");
+      if (file.executable) {
+        await fs.chmod(file.path, 0o755);
+      }
+    }),
+  );
 
   return {
     ok: true,
     installPath: settings.installPath,
-    files: [configPath, envPath, planPath, readmePath],
+    files: generatedFiles,
     commands,
+    serviceCommands: buildServiceCommands(settings),
     warnings,
   };
 }
@@ -376,7 +399,7 @@ function assertSafeInstallPath(installPath) {
 }
 
 async function buildAgentsConfig(settings) {
-  const sourcePath = path.join(PROJECT_ROOT, "configs", "agents.json");
+  const sourcePath = await resolveDefaultAgentsConfigPath();
   const rawConfig = await fs.readFile(sourcePath, "utf8");
   const config = JSON.parse(rawConfig);
 
@@ -415,11 +438,10 @@ function buildEnvFile(settings, configPath) {
     lines.push(`OPENHANDS_PROVIDER_BASE_URL=${baseUrl}`);
   }
 
-  if (settings.apiKey) {
-    lines.push(`${apiKeyName}=${settings.apiKey}`);
-  } else {
-    lines.push(`# ${apiKeyName}=`);
-  }
+  lines.push("");
+  lines.push("# API keys are stored by the Electron installer with OS encryption when available.");
+  lines.push("# For headless service mode, place provider keys in services/secrets.env.");
+  lines.push(`# ${apiKeyName}=`);
 
   return `${lines.join("\n")}\n`;
 }
@@ -484,6 +506,172 @@ function buildInstallCommands(settings) {
   ];
 }
 
+function buildServiceFiles(settings) {
+  const serviceDir = path.join(settings.installPath, "services");
+  const files = [
+    {
+      path: path.join(serviceDir, "start-openhands.ps1"),
+      content: buildWindowsStartScript(settings),
+    },
+    {
+      path: path.join(serviceDir, "install-windows-task.ps1"),
+      content: buildWindowsTaskInstallScript(),
+    },
+    {
+      path: path.join(serviceDir, "uninstall-windows-task.ps1"),
+      content: buildWindowsTaskUninstallScript(),
+    },
+    {
+      path: path.join(serviceDir, "devagent-hub.service"),
+      content: buildSystemdUnit(settings),
+    },
+    {
+      path: path.join(serviceDir, "install-linux-systemd.sh"),
+      content: buildSystemdInstallScript(),
+      executable: true,
+    },
+    {
+      path: path.join(serviceDir, "uninstall-linux-systemd.sh"),
+      content: buildSystemdUninstallScript(),
+      executable: true,
+    },
+    {
+      path: path.join(serviceDir, "secrets.env.example"),
+      content: buildSecretsExample(settings),
+    },
+  ];
+
+  return files;
+}
+
+function buildServiceCommands(settings) {
+  if (process.platform === "win32") {
+    return [
+      `Set-Location "${path.join(settings.installPath, "services")}"`,
+      ".\\install-windows-task.ps1",
+      ".\\uninstall-windows-task.ps1",
+    ];
+  }
+
+  return [
+    `cd "${path.join(settings.installPath, "services")}"`,
+    "./install-linux-systemd.sh",
+    "./uninstall-linux-systemd.sh",
+  ];
+}
+
+function buildWindowsStartScript(settings) {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "$ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot '..')",
+    "$EnvFile = Join-Path $ProjectRoot '.env.local'",
+    "$SecretsFile = Join-Path $PSScriptRoot 'secrets.env'",
+    "function Import-EnvFile($Path) {",
+    "  if (!(Test-Path $Path)) { return }",
+    "  Get-Content $Path | ForEach-Object {",
+    "    $Line = $_.Trim()",
+    "    if (!$Line -or $Line.StartsWith('#') -or !$Line.Contains('=')) { return }",
+    "    $Name, $Value = $Line.Split('=', 2)",
+    "    [Environment]::SetEnvironmentVariable($Name.Trim(), $Value.Trim().Trim('\"'), 'Process')",
+    "  }",
+    "}",
+    "Import-EnvFile $EnvFile",
+    "Import-EnvFile $SecretsFile",
+    "$env:SERVE_FRONTEND = 'true'",
+    "$Python = Join-Path $ProjectRoot 'vendor\\OpenHands\\.venv\\Scripts\\python.exe'",
+    "& $Python -m uvicorn openhands.app_server.app:app --app-dir (Join-Path $ProjectRoot 'vendor\\OpenHands') --host 127.0.0.1 --port 3000",
+    "",
+  ].join("\n");
+}
+
+function buildWindowsTaskInstallScript() {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "$TaskName = 'DevAgent Hub OpenHands'",
+    "$ScriptPath = Join-Path $PSScriptRoot 'start-openhands.ps1'",
+    "$Action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument \"-NoProfile -ExecutionPolicy Bypass -File `\"$ScriptPath`\"\"",
+    "$Trigger = New-ScheduledTaskTrigger -AtLogOn",
+    "$Principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel LeastPrivilege",
+    "Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Force | Out-Null",
+    "Start-ScheduledTask -TaskName $TaskName",
+    "Write-Host 'DevAgent Hub scheduled task installed and started.'",
+    "",
+  ].join("\n");
+}
+
+function buildWindowsTaskUninstallScript() {
+  return [
+    "$TaskName = 'DevAgent Hub OpenHands'",
+    "if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {",
+    "  Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue",
+    "  Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false",
+    "}",
+    "Write-Host 'DevAgent Hub scheduled task removed.'",
+    "",
+  ].join("\n");
+}
+
+function buildSystemdUnit(settings) {
+  const projectRoot = settings.installPath;
+  const openHandsDir = path.join(projectRoot, "vendor", "OpenHands");
+  const python = path.join(openHandsDir, ".venv", "bin", "python");
+  return [
+    "[Unit]",
+    "Description=DevAgent Hub OpenHands",
+    "After=network-online.target",
+    "Wants=network-online.target",
+    "",
+    "[Service]",
+    "Type=simple",
+    `WorkingDirectory=${systemdEscape(projectRoot)}`,
+    `EnvironmentFile=-${systemdEscape(path.join(projectRoot, ".env.local"))}`,
+    `EnvironmentFile=-${systemdEscape(path.join(projectRoot, "services", "secrets.env"))}`,
+    "Environment=SERVE_FRONTEND=true",
+    `ExecStart=${systemdEscape(python)} -m uvicorn openhands.app_server.app:app --app-dir ${systemdEscape(openHandsDir)} --host 127.0.0.1 --port 3000`,
+    "Restart=on-failure",
+    "RestartSec=5",
+    "",
+    "[Install]",
+    "WantedBy=default.target",
+    "",
+  ].join("\n");
+}
+
+function buildSystemdInstallScript() {
+  return [
+    "#!/usr/bin/env bash",
+    "set -euo pipefail",
+    "UNIT_DIR=\"$HOME/.config/systemd/user\"",
+    "mkdir -p \"$UNIT_DIR\"",
+    "cp \"$(dirname \"$0\")/devagent-hub.service\" \"$UNIT_DIR/devagent-hub.service\"",
+    "systemctl --user daemon-reload",
+    "systemctl --user enable --now devagent-hub.service",
+    "systemctl --user status devagent-hub.service --no-pager",
+    "",
+  ].join("\n");
+}
+
+function buildSystemdUninstallScript() {
+  return [
+    "#!/usr/bin/env bash",
+    "set -euo pipefail",
+    "systemctl --user disable --now devagent-hub.service || true",
+    "rm -f \"$HOME/.config/systemd/user/devagent-hub.service\"",
+    "systemctl --user daemon-reload",
+    "echo 'DevAgent Hub systemd user service removed.'",
+    "",
+  ].join("\n");
+}
+
+function buildSecretsExample(settings) {
+  return [
+    "# Copy this file to secrets.env only if you need headless cloud-provider service mode.",
+    "# The Electron launcher stores API keys with OS encryption when available.",
+    `${providerApiKeyName(settings.cloudProvider)}=`,
+    "",
+  ].join("\n");
+}
+
 async function buildWarnings(settings) {
   const warnings = [];
   const packagePath = path.join(settings.installPath, "package.json");
@@ -515,7 +703,29 @@ async function pathExists(targetPath) {
   }
 }
 
+async function resolveDefaultAgentsConfigPath() {
+  const candidates = [
+    path.join(PROJECT_ROOT, "configs", "agents.json"),
+    path.join(process.resourcesPath || "", "defaults", "agents.json"),
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate && fsSync.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error("Default agents config was not found.");
+}
+
+function systemdEscape(value) {
+  const text = String(value);
+  if (!/[\s"'\\]/.test(text)) return text;
+  return `"${text.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
 function buildReadme(settings, commands) {
+  const serviceCommands = buildServiceCommands(settings);
   return [
     "DevAgent Hub install plan",
     "",
@@ -526,6 +736,11 @@ function buildReadme(settings, commands) {
     "",
     "Run from terminal:",
     ...commands.map((command) => `  ${command}`),
+    "",
+    "Optional background service:",
+    ...serviceCommands.map((command) => `  ${command}`),
+    "",
+    "For cloud models in headless service mode, copy services/secrets.env.example to services/secrets.env and fill the provider key.",
     "",
   ].join("\n");
 }

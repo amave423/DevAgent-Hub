@@ -62,6 +62,20 @@ class AgentsConfig(BaseModel):
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
 
 
+class ModelHealth(BaseModel):
+    modelId: str
+    name: str
+    provider: str
+    kind: ModelKind
+    ok: bool
+    status: Literal['available', 'missing_credentials', 'unreachable', 'unknown']
+    message: str
+
+
+class ModelsHealthResponse(BaseModel):
+    models: list[ModelHealth]
+
+
 class RunAgentsRequest(BaseModel):
     task: str = Field(min_length=1)
     agents: list[AgentDefinition] | None = None

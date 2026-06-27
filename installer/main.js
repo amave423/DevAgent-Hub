@@ -12,6 +12,11 @@ const {
   prepareInstall,
 } = require("./install-service");
 const { InstallCommandRunner } = require("./install-runner");
+const {
+  getSecretStatus,
+  readApiKey,
+  saveApiKey,
+} = require("./secret-store");
 
 let activeInstall = null;
 let activeOpenHands = null;
@@ -46,8 +51,9 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-ipcMain.handle("installer:defaults", async () => getInstallerDefaults());
+ipcMain.handle("installer:defaults", async () => getInstallerDefaults(app.isPackaged));
 ipcMain.handle("system:check", async () => checkSystem());
+ipcMain.handle("secrets:status", async (_event, rawSettings) => getSecretStatus(rawSettings));
 
 ipcMain.handle("dialog:select-install-dir", async () => {
   const result = await dialog.showOpenDialog({
@@ -60,7 +66,9 @@ ipcMain.handle("dialog:select-install-dir", async () => {
 });
 
 ipcMain.handle("install:prepare", async (_event, rawSettings) => {
-  return prepareInstall(rawSettings);
+  const secretResult = await persistApiKey(rawSettings);
+  const prepared = await prepareInstall(withoutApiKey(rawSettings));
+  return mergeSecretWarning(prepared, secretResult);
 });
 
 ipcMain.handle("install:start", async (event, rawSettings) => {
@@ -108,11 +116,12 @@ ipcMain.handle("openhands:start", async (event, rawSettings) => {
   }
 
   const runId = randomUUID();
-  const step = buildOpenHandsLaunchStep(rawSettings);
+  const settingsWithSecret = await withStoredApiKey(rawSettings);
+  const step = buildOpenHandsLaunchStep(settingsWithSecret);
   const child = spawn(step.command, step.args, {
     cwd: step.cwd,
     env: {
-      ...buildProcessEnv(rawSettings),
+      ...buildProcessEnv(settingsWithSecret),
       SERVE_FRONTEND: "true",
     },
     shell: false,
@@ -182,7 +191,12 @@ async function runInstall(runId, rawSettings, sender) {
       message: "Подготовка конфигурации",
     });
 
-    const prepared = await prepareInstall(rawSettings);
+    const secretResult = await persistApiKey(rawSettings);
+    const settingsWithSecret = await withStoredApiKey(rawSettings);
+    const prepared = mergeSecretWarning(
+      await prepareInstall(withoutApiKey(rawSettings)),
+      secretResult,
+    );
 
     sendInstallEvent(sender, runId, {
       type: "prepare-complete",
@@ -200,8 +214,8 @@ async function runInstall(runId, rawSettings, sender) {
     }
 
     const runner = new InstallCommandRunner({
-      steps: buildInstallExecutionSteps(rawSettings),
-      env: buildProcessEnv(rawSettings),
+      steps: buildInstallExecutionSteps(settingsWithSecret),
+      env: buildProcessEnv(settingsWithSecret),
     });
 
     activeInstall.runner = runner;
@@ -218,6 +232,35 @@ async function runInstall(runId, rawSettings, sender) {
   } finally {
     activeInstall = null;
   }
+}
+
+async function persistApiKey(rawSettings) {
+  if (!String(rawSettings?.apiKey || "").trim()) {
+    return { saved: false, available: true };
+  }
+  return saveApiKey(rawSettings);
+}
+
+async function withStoredApiKey(rawSettings) {
+  if (String(rawSettings?.apiKey || "").trim()) {
+    return rawSettings;
+  }
+  const apiKey = await readApiKey(rawSettings);
+  return apiKey ? { ...rawSettings, apiKey } : rawSettings;
+}
+
+function withoutApiKey(rawSettings) {
+  return { ...rawSettings, apiKey: "" };
+}
+
+function mergeSecretWarning(prepared, secretResult) {
+  if (secretResult?.warning) {
+    return {
+      ...prepared,
+      warnings: [...prepared.warnings, secretResult.warning],
+    };
+  }
+  return prepared;
 }
 
 function sendInstallEvent(sender, runId, payload) {

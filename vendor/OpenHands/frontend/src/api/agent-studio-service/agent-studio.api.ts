@@ -2,6 +2,7 @@ import { openHands } from "#/api/open-hands-axios";
 import {
   AgentLogEvent,
   AgentsConfig,
+  ModelsHealthResponse,
   RunAgentsResponse,
   TaskState,
 } from "./agent-studio.types";
@@ -16,6 +17,13 @@ class AgentStudioService {
     const { data } = await openHands.post<AgentsConfig>(
       "/api/v1/agents/config",
       config,
+    );
+    return data;
+  }
+
+  static async getModelsHealth(): Promise<ModelsHealthResponse> {
+    const { data } = await openHands.get<ModelsHealthResponse>(
+      "/api/v1/agents/models/health",
     );
     return data;
   }

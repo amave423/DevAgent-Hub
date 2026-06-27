@@ -1,0 +1,39 @@
+appId: com.devagenthub.installer
+productName: DevAgent Hub Installer
+artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
+asar: true
+npmRebuild: false
+nodeGypRebuild: false
+directories:
+  output: dist
+files:
+  - main.js
+  - preload.js
+  - install-service.js
+  - install-runner.js
+  - secret-store.js
+  - package.json
+  - renderer/**/*
+extraResources:
+  - from: ../configs/agents.json
+    to: defaults/agents.json
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  requestedExecutionLevel: asInvoker
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+linux:
+  category: Development
+  target:
+    - AppImage
+    - deb

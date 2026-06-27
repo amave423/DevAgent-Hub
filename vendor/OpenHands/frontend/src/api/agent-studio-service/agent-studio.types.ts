@@ -46,6 +46,26 @@ export interface AgentsConfig {
   runtime: RuntimeConfig;
 }
 
+export type ModelHealthStatus =
+  | "available"
+  | "missing_credentials"
+  | "unreachable"
+  | "unknown";
+
+export interface ModelHealth {
+  modelId: string;
+  name: string;
+  provider: string;
+  kind: ModelKind;
+  ok: boolean;
+  status: ModelHealthStatus;
+  message: string;
+}
+
+export interface ModelsHealthResponse {
+  models: ModelHealth[];
+}
+
 export interface RunAgentsResponse {
   taskId: string;
   status: TaskStatus;

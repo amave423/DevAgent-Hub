@@ -7,8 +7,10 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from openhands.app_server.agent_studio.config_store import ConfigStore
+from openhands.app_server.agent_studio.model_health import check_models_health
 from openhands.app_server.agent_studio.models import (
     AgentsConfig,
+    ModelsHealthResponse,
     RunAgentsRequest,
     RunAgentsResponse,
     TaskStatus,
@@ -32,6 +34,12 @@ async def get_agents_config() -> AgentsConfig:
 @router.post('/config', response_model=AgentsConfig)
 async def save_agents_config(config: AgentsConfig) -> AgentsConfig:
     return config_store.save(config)
+
+
+@router.get('/models/health', response_model=ModelsHealthResponse)
+async def get_models_health() -> ModelsHealthResponse:
+    config = config_store.load()
+    return ModelsHealthResponse(models=await check_models_health(config.models))
 
 
 @router.post('/run', response_model=RunAgentsResponse)

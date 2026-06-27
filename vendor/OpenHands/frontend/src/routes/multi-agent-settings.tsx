@@ -7,6 +7,7 @@ import {
   Loader2,
   Play,
   Plus,
+  RefreshCw,
   Save,
   SlidersHorizontal,
   Square,
@@ -17,6 +18,7 @@ import {
   AgentDefinition,
   AgentLogEvent,
   AgentsConfig,
+  ModelHealth,
   TaskState,
 } from "#/api/agent-studio-service/agent-studio.types";
 import { BrandButton } from "#/components/features/settings/brand-button";
@@ -40,6 +42,8 @@ export default function MultiAgentSettingsScreen() {
   const [draggedAgentId, setDraggedAgentId] = React.useState<string | null>(
     null,
   );
+  const [modelHealth, setModelHealth] = React.useState<ModelHealth[]>([]);
+  const [isCheckingModels, setIsCheckingModels] = React.useState(false);
   const eventSourceRef = React.useRef<EventSource | null>(null);
 
   React.useEffect(() => {
@@ -154,6 +158,23 @@ export default function MultiAgentSettingsScreen() {
     }
   };
 
+  const handleCheckModels = async () => {
+    setIsCheckingModels(true);
+    setError(null);
+    try {
+      const health = await AgentStudioService.getModelsHealth();
+      setModelHealth(health.models);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Не удалось проверить модели.",
+      );
+    } finally {
+      setIsCheckingModels(false);
+    }
+  };
+
   if (isLoading || !config) {
     return (
       <div className="flex items-center gap-2 text-tertiary-alt">
@@ -223,6 +244,11 @@ export default function MultiAgentSettingsScreen() {
           ))}
 
           <RuntimePanel config={config} updateConfig={updateConfig} />
+          <ModelHealthPanel
+            health={modelHealth}
+            isChecking={isCheckingModels}
+            onCheck={() => void handleCheckModels()}
+          />
         </div>
 
         <aside className="flex flex-col gap-4 rounded-sm border border-[#3D4046] bg-tertiary p-4">
@@ -328,6 +354,72 @@ export default function MultiAgentSettingsScreen() {
         </BrandButton>
       </div>
     </div>
+  );
+}
+
+function ModelHealthPanel({
+  health,
+  isChecking,
+  onCheck,
+}: {
+  health: ModelHealth[];
+  isChecking: boolean;
+  onCheck: () => void;
+}) {
+  return (
+    <section className="rounded-sm border border-[#3D4046] bg-tertiary p-4">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <RefreshCw size={18} />
+          <Typography.H3>Модели</Typography.H3>
+        </div>
+        <BrandButton
+          type="button"
+          variant="secondary"
+          isDisabled={isChecking}
+          startContent={
+            isChecking ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <RefreshCw size={16} />
+            )
+          }
+          onClick={onCheck}
+        >
+          Проверить
+        </BrandButton>
+      </div>
+
+      {health.length === 0 ? (
+        <Typography.Paragraph className="text-tertiary-alt">
+          Проверка покажет доступность Ollama и наличие ключей для облачных провайдеров.
+        </Typography.Paragraph>
+      ) : (
+        <div className="grid gap-2 md:grid-cols-2">
+          {health.map((model) => (
+            <article
+              key={model.modelId}
+              className="rounded-sm border border-[#3D4046] bg-base p-3 text-sm"
+            >
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <span className="font-semibold text-white">{model.name}</span>
+                <span
+                  className={[
+                    "rounded-full px-2 py-0.5 text-xs",
+                    model.ok
+                      ? "bg-green-500/15 text-green-300"
+                      : "bg-yellow-500/15 text-yellow-200",
+                  ].join(" ")}
+                >
+                  {model.status}
+                </span>
+              </div>
+              <p className="text-xs text-tertiary-alt">{model.message}</p>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

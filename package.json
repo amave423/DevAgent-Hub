@@ -12,12 +12,18 @@
     "build:web": "npm --workspace apps/web run build",
     "lint:web": "npm --workspace apps/web run lint",
     "dev:installer": "npm --workspace installer run dev",
+    "check:installer": "npm --workspace installer run check",
+    "build:installer": "npm --workspace installer run dist:dir",
+    "dist:installer": "npm --workspace installer run dist",
+    "dist:installer:win": "npm --workspace installer run dist:win",
+    "dist:installer:linux": "npm --workspace installer run dist:linux",
     "start:api": "uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --app-dir services/agent-api",
     "typecheck": "npm --workspace apps/web run typecheck",
     "smoke:agent-studio": ".venv\\Scripts\\python.exe scripts\\smoke_agent_studio.py",
     "smoke:openhands-app": "vendor\\OpenHands\\.venv\\Scripts\\python.exe scripts\\smoke_openhands_app.py",
     "smoke:installer": "node scripts\\smoke_installer_prepare.js && node scripts\\smoke_installer_runner.js",
-    "smoke:installer-runner": "node scripts\\smoke_installer_runner.js"
+    "smoke:installer-runner": "node scripts\\smoke_installer_runner.js",
+    "verify": "npm run check:installer && npm run smoke:installer && npm run typecheck && npm run smoke:agent-studio && npm run smoke:openhands-app"
   },
   "engines": {
     "node": ">=20"
