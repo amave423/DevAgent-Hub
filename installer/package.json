@@ -7,7 +7,7 @@
   "author": "DevAgent Hub",
   "scripts": {
     "dev": "electron .",
-    "check": "node --check main.js && node --check preload.js && node --check install-service.js && node --check install-runner.js && node --check secret-store.js && node --check renderer/installer.js",
+    "check": "node --check main.js && node --check preload.js && node --check install-service.js && node --check install-runner.js && node --check secret-store.js && node --check cli.js && node --check renderer/installer.js",
     "dist": "electron-builder --config electron-builder.yml",
     "dist:dir": "electron-builder --config electron-builder.yml --dir",
     "dist:win": "electron-builder --config electron-builder.yml --win nsis portable",

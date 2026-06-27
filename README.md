@@ -5,7 +5,7 @@ Custom OpenHands fork layer for managing multi-agent workflows. The project incl
 - OpenHands fork under `vendor/OpenHands` with Agent Studio API and settings UI.
 - Multi-agent chain: Generator, Critic, Optimizer, Tester, Finalizer.
 - Live/mock runner modes for Ollama, OpenAI-compatible providers, OpenRouter and custom endpoints.
-- Electron installer/launcher for Windows and Linux preparation.
+- Terminal installer for Linux servers, plus an optional Electron launcher for desktop/dev use.
 - Smoke tests for the isolated Agent Studio router, full OpenHands app, and installer workflow.
 
 ## Repository
@@ -14,7 +14,7 @@ GitHub: https://github.com/amave423/DevAgent-Hub
 
 ## Requirements
 
-- Node.js 20+
+- Node.js 22.12+ for OpenHands frontend builds
 - Python 3.12 recommended
 - Git
 - Docker for full OpenHands sandbox runtime
@@ -38,7 +38,39 @@ npm run smoke:agent-studio
 npm run smoke:openhands-app
 ```
 
-## Installer
+## Primary Server Install
+
+Ubuntu/Debian server path:
+
+```bash
+git clone https://github.com/amave423/DevAgent-Hub.git
+cd DevAgent-Hub
+./install.sh
+```
+
+One-command bootstrap from an empty server:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/amave423/DevAgent-Hub/main/install.sh | bash
+```
+
+The terminal installer installs/checks Git, Python 3.12, Node.js 22.x, Docker and Ollama, clones the repository when needed, asks which models to enable, writes `configs/agents.json`, installs OpenHands dependencies, builds the OpenHands frontend, pulls selected Ollama models, runs smoke checks, and starts the background service.
+
+Useful non-interactive example:
+
+```bash
+./install.sh --yes --models ollama-qwen25-coder-7b --model ollama-qwen25-coder-7b
+```
+
+Cloud example:
+
+```bash
+./install.sh --models openrouter-auto --model openrouter-auto --runner-mode live --cloud-provider openrouter --api-key "$OPENROUTER_API_KEY"
+```
+
+Only selected models are written to `configs/agents.json`, so the web UI shows that selected set rather than the full built-in catalog.
+
+## Optional Desktop Installer
 
 Development mode:
 
@@ -46,7 +78,7 @@ Development mode:
 npm run dev:installer
 ```
 
-Build unpacked installer app:
+Build unpacked Electron app:
 
 ```powershell
 npm run build:installer
@@ -61,7 +93,7 @@ npm run dist:installer:linux
 
 Artifacts are written to `installer/dist/` and are intentionally ignored by git.
 
-The installer can:
+The Electron launcher can:
 
 - check Git, Docker, Node.js, npm and Python;
 - generate `configs/agents.json`, `.env.local`, install plan and service files;
@@ -70,7 +102,7 @@ The installer can:
 - launch/stop OpenHands at `http://127.0.0.1:3000`;
 - store cloud API keys through Electron `safeStorage` when OS encryption is available.
 
-API keys are not written to `.env.local`. For GUI launch they are injected from encrypted app storage. For headless service mode, copy `services/secrets.env.example` to `services/secrets.env` and provide the provider key there.
+Electron is not required for Ubuntu Server installation. API keys are not written to `.env.local`. For terminal/headless service mode, the CLI writes `services/secrets.env` when `--api-key` is provided, or you can copy `services/secrets.env.example` manually.
 
 ## Background Services
 
@@ -118,7 +150,7 @@ The frontend settings screen is:
 vendor/OpenHands/frontend/src/routes/multi-agent-settings.tsx
 ```
 
-It supports enabling/disabling agents, editing prompts, selecting models, moving agents by buttons or drag-and-drop, test runs, live logs, progress, and cancellation.
+It supports enabling/disabling agents, editing prompts, selecting among the models enabled during installation, moving agents by buttons or drag-and-drop, test runs, live logs, progress, and cancellation.
 
 ## Runtime Modes
 

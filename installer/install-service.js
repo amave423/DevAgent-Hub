@@ -6,6 +6,7 @@ const path = require("node:path");
 
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const DEFAULT_REPO_URL = "https://github.com/amave423/DevAgent-Hub.git";
+const DEFAULT_MODEL_ID = "ollama-qwen25-coder-7b";
 
 function getInstallerDefaults(isPackaged = false) {
   return {
@@ -33,9 +34,9 @@ async function checkSystem() {
     }),
     checkTool({
       id: "node",
-      label: "Node.js 20+",
+      label: "Node.js 22.12+",
       candidates: [commandCandidate(platformCommand("node"), ["--version"])],
-      minVersion: [20, 0, 0],
+      minVersion: [22, 12, 0],
       required: true,
     }),
     checkTool({
@@ -46,9 +47,9 @@ async function checkSystem() {
     }),
     checkTool({
       id: "python",
-      label: "Python 3.10+",
+      label: "Python 3.12+",
       candidates: pythonCandidates(),
-      minVersion: [3, 10, 0],
+      minVersion: [3, 12, 0],
       required: true,
     }),
   ]);
@@ -89,6 +90,7 @@ async function prepareInstall(rawSettings) {
     installPath: settings.installPath,
     repoUrl: settings.repoUrl,
     modelId: settings.modelId,
+    selectedModelIds: settings.selectedModelIds,
     runnerMode: settings.runnerMode,
     proxyConfigured: Boolean(settings.proxyUrl),
     cloudProvider: settings.cloudProvider,
@@ -137,62 +139,56 @@ function buildInstallExecutionSteps(rawSettings) {
 
   return [
     {
-      id: "root-npm-install",
-      label: "Установка Node.js зависимостей проекта",
-      cwd: settings.installPath,
-      command: platformCommand("npm"),
-      args: ["install"],
-    },
-    {
       id: "root-python-venv",
-      label: "Создание Python venv",
+      label: "Create Python 3.12 virtual environment",
       cwd: settings.installPath,
-      command: process.platform === "win32" ? "py" : "python3",
+      command: process.platform === "win32" ? "py" : "python3.12",
       args: process.platform === "win32"
         ? ["-3.12", "-m", "venv", ".venv"]
         : ["-m", "venv", ".venv"],
     },
     {
       id: "root-install-uv",
-      label: "Установка uv",
+      label: "Install uv",
       cwd: settings.installPath,
       command: rootPython,
       args: ["-m", "pip", "install", "uv"],
     },
     {
       id: "openhands-uv-sync",
-      label: "Установка Python зависимостей OpenHands",
+      label: "Install OpenHands Python dependencies",
       cwd: openHandsDir,
       command: rootUv,
       args: ["sync", "--frozen", "--no-dev", "--python", rootPython],
     },
     {
       id: "openhands-frontend-install",
-      label: "Установка frontend зависимостей OpenHands",
+      label: "Install OpenHands frontend dependencies",
       cwd: openHandsFrontendDir,
       command: platformCommand("npm"),
       args: ["install"],
     },
     {
       id: "openhands-frontend-build",
-      label: "Сборка frontend OpenHands",
+      label: "Build OpenHands frontend",
       cwd: openHandsFrontendDir,
       command: platformCommand("npm"),
       args: ["run", "build"],
     },
+    ...buildOllamaPullSteps(settings),
     {
       id: "agent-studio-smoke",
-      label: "Проверка Agent Studio API",
+      label: "Check Agent Studio API",
       cwd: settings.installPath,
-      command: platformCommand("npm"),
-      args: ["run", "smoke:agent-studio"],
+      command: openHandsPython,
+      args: [path.join(settings.installPath, "scripts", "smoke_agent_studio.py")],
     },
     {
       id: "openhands-app-smoke",
-      label: "Проверка OpenHands app API",
+      label: "Check OpenHands app API",
       cwd: settings.installPath,
-      command: platformCommand("npm"),
-      args: ["run", "smoke:openhands-app"],
+      command: openHandsPython,
+      args: [path.join(settings.installPath, "scripts", "smoke_openhands_app.py")],
       env: {
         OPENHANDS_APP_SMOKE_PYTHON: openHandsPython,
       },
@@ -278,6 +274,7 @@ function pythonCandidates() {
   }
 
   return [
+    commandCandidate("python3.12", ["--version"]),
     commandCandidate("python3", ["--version"]),
     commandCandidate("python", ["--version"]),
   ];
@@ -365,22 +362,59 @@ function normalizeSettings(rawSettings = {}) {
     ["openrouter", "openai", "custom"],
     "openrouter",
   );
+  const selectedModelIdsInput = parseModelIdList(
+    rawSettings.selectedModelIds ?? rawSettings.modelIds ?? rawSettings.models,
+  );
+  const requestedModelId = String(rawSettings.modelId || "").trim();
+  const selectedModelIds = uniqueStrings([
+    requestedModelId,
+    ...selectedModelIdsInput,
+  ]).filter(Boolean);
+
+  if (selectedModelIds.length === 0) {
+    selectedModelIds.push(DEFAULT_MODEL_ID);
+  }
+
+  const modelId = selectedModelIds.includes(requestedModelId)
+    ? requestedModelId
+    : selectedModelIds[0];
 
   return {
     installPath,
     repoUrl: String(rawSettings.repoUrl || DEFAULT_REPO_URL).trim(),
-    modelId: String(rawSettings.modelId || "ollama-qwen25-coder-7b").trim(),
+    modelId,
+    selectedModelIds,
     runnerMode,
     proxyUrl: String(rawSettings.proxyUrl || "").trim(),
     apiKey: String(rawSettings.apiKey || "").trim(),
     cloudProvider,
     cloudBaseUrl: String(rawSettings.cloudBaseUrl || "").trim(),
+    pullLocalModels: rawSettings.pullLocalModels !== false && rawSettings.pullLocalModels !== "false",
   };
 }
 
 function normalizeEnum(value, allowed, fallback) {
   const normalized = String(value || fallback).trim();
   return allowed.includes(normalized) ? normalized : fallback;
+}
+
+function parseModelIdList(value) {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => parseModelIdList(item));
+  }
+
+  if (value === undefined || value === null) {
+    return [];
+  }
+
+  return String(value)
+    .split(/[,\s]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values)];
 }
 
 function expandHome(value) {
@@ -402,10 +436,21 @@ async function buildAgentsConfig(settings) {
   const sourcePath = await resolveDefaultAgentsConfigPath();
   const rawConfig = await fs.readFile(sourcePath, "utf8");
   const config = JSON.parse(rawConfig);
+  const selectedModelIds = new Set(settings.selectedModelIds);
+  const selectedModels = config.models.filter((model) => selectedModelIds.has(model.id));
 
+  if (selectedModels.length === 0) {
+    throw new Error(`Selected models were not found in the default config: ${settings.selectedModelIds.join(", ")}`);
+  }
+
+  const defaultModelId = selectedModels.some((model) => model.id === settings.modelId)
+    ? settings.modelId
+    : selectedModels[0].id;
+
+  config.models = selectedModels;
   config.agents = config.agents.map((agent) => ({
     ...agent,
-    modelId: settings.modelId,
+    modelId: defaultModelId,
   }));
   config.runtime = {
     ...config.runtime,
@@ -439,8 +484,7 @@ function buildEnvFile(settings, configPath) {
   }
 
   lines.push("");
-  lines.push("# API keys are stored by the Electron installer with OS encryption when available.");
-  lines.push("# For headless service mode, place provider keys in services/secrets.env.");
+  lines.push("# API keys are not stored here. Put terminal/service secrets in services/secrets.env.");
   lines.push(`# ${apiKeyName}=`);
 
   return `${lines.join("\n")}\n`;
@@ -468,7 +512,6 @@ function buildInstallCommands(settings) {
   if (process.platform === "win32") {
     return [
       `Set-Location "${settings.installPath}"`,
-      "npm install",
       "py -3.12 -m venv .venv",
       ".venv\\Scripts\\python.exe -m pip install uv",
       "Push-Location vendor\\OpenHands",
@@ -478,8 +521,9 @@ function buildInstallCommands(settings) {
       "npm install",
       "npm run build",
       "Pop-Location",
-      "npm run smoke:agent-studio",
-      "npm run smoke:openhands-app",
+      ...selectedOllamaModelNames(settings).map((modelName) => `ollama pull ${modelName}`),
+      ".\\vendor\\OpenHands\\.venv\\Scripts\\python.exe scripts\\smoke_agent_studio.py",
+      ".\\vendor\\OpenHands\\.venv\\Scripts\\python.exe scripts\\smoke_openhands_app.py",
       '$env:AGENT_STUDIO_CONFIG_PATH = "$PWD\\configs\\agents.json"',
       '$env:OH_PERSISTENCE_DIR = "$PWD\\.openhands"',
       ".\\vendor\\OpenHands\\.venv\\Scripts\\python.exe -m uvicorn openhands.app_server.app:app --app-dir vendor\\OpenHands --host 127.0.0.1 --port 3000",
@@ -488,8 +532,7 @@ function buildInstallCommands(settings) {
 
   return [
     `cd "${settings.installPath}"`,
-    "npm install",
-    "python3 -m venv .venv",
+    "python3.12 -m venv .venv",
     ".venv/bin/python -m pip install uv",
     "cd vendor/OpenHands",
     "../../.venv/bin/uv sync --frozen --no-dev --python ../../.venv/bin/python",
@@ -498,8 +541,9 @@ function buildInstallCommands(settings) {
     "npm install",
     "npm run build",
     "cd ../../..",
-    "npm run smoke:agent-studio",
-    "npm run smoke:openhands-app",
+    ...selectedOllamaModelNames(settings).map((modelName) => `ollama pull ${modelName}`),
+    "./vendor/OpenHands/.venv/bin/python scripts/smoke_agent_studio.py",
+    "./vendor/OpenHands/.venv/bin/python scripts/smoke_openhands_app.py",
     "export AGENT_STUDIO_CONFIG_PATH=\"$PWD/configs/agents.json\"",
     "export OH_PERSISTENCE_DIR=\"$PWD/.openhands\"",
     "./vendor/OpenHands/.venv/bin/python -m uvicorn openhands.app_server.app:app --app-dir vendor/OpenHands --host 127.0.0.1 --port 3000",
@@ -644,6 +688,9 @@ function buildSystemdInstallScript() {
     "UNIT_DIR=\"$HOME/.config/systemd/user\"",
     "mkdir -p \"$UNIT_DIR\"",
     "cp \"$(dirname \"$0\")/devagent-hub.service\" \"$UNIT_DIR/devagent-hub.service\"",
+    "if command -v loginctl >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1; then",
+    "  sudo loginctl enable-linger \"$USER\" || true",
+    "fi",
     "systemctl --user daemon-reload",
     "systemctl --user enable --now devagent-hub.service",
     "systemctl --user status devagent-hub.service --no-pager",
@@ -666,7 +713,7 @@ function buildSystemdUninstallScript() {
 function buildSecretsExample(settings) {
   return [
     "# Copy this file to secrets.env only if you need headless cloud-provider service mode.",
-    "# The Electron launcher stores API keys with OS encryption when available.",
+    "# Keep secrets.env outside git and readable only by the service user.",
     `${providerApiKeyName(settings.cloudProvider)}=`,
     "",
   ].join("\n");
@@ -687,11 +734,42 @@ async function buildWarnings(settings) {
     warnings.push("В выбранной папке не найден vendor/OpenHands. Проверьте, что форк скачан полностью.");
   }
 
-  if (settings.runnerMode === "live" && !settings.apiKey && settings.modelId.startsWith("open")) {
-    warnings.push("Для live-режима с облачной моделью нужен API key.");
+  if (
+    settings.runnerMode === "live" &&
+    !settings.apiKey &&
+    settings.selectedModelIds.some((modelId) => modelId.startsWith("open"))
+  ) {
+    warnings.push("Live mode with cloud models requires an API key in services/secrets.env or the process environment.");
   }
 
   return warnings;
+}
+
+function buildOllamaPullSteps(settings) {
+  if (!settings.pullLocalModels) return [];
+
+  return selectedOllamaModelNames(settings).map((modelName) => ({
+    id: `ollama-pull-${modelName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`,
+    label: `Pull Ollama model ${modelName}`,
+    cwd: settings.installPath,
+    command: platformCommand("ollama"),
+    args: ["pull", modelName],
+  }));
+}
+
+function selectedOllamaModelNames(settings) {
+  const known = {
+    "ollama-qwen25-coder-7b": "qwen2.5-coder:7b",
+    "ollama-deepseek-coder-67b": "deepseek-coder:6.7b",
+    "ollama-deepseek-coder-33b": "deepseek-coder:33b",
+    "ollama-llama32-3b": "llama3.2:3b",
+  };
+
+  return uniqueStrings(
+    settings.selectedModelIds
+      .map((modelId) => known[modelId])
+      .filter(Boolean),
+  );
 }
 
 async function pathExists(targetPath) {
@@ -732,6 +810,7 @@ function buildReadme(settings, commands) {
     `Project path: ${settings.installPath}`,
     `Repository: ${settings.repoUrl}`,
     `Default model: ${settings.modelId}`,
+    `Enabled models: ${settings.selectedModelIds.join(", ")}`,
     `Runner mode: ${settings.runnerMode}`,
     "",
     "Run from terminal:",

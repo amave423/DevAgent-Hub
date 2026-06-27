@@ -15,4 +15,5 @@ __pycache__/
 coverage/
 devagent-install-plan.json
 README_INSTALL.txt
+services/secrets.env
 installer/dist/

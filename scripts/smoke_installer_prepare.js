@@ -17,6 +17,7 @@ async function main() {
       installPath,
       repoUrl: "https://github.com/amave423/DevAgent-Hub.git",
       modelId: "openrouter-auto",
+      selectedModelIds: ["openrouter-auto", "openai-gpt-4o-mini"],
       runnerMode: "mock",
       proxyUrl: "http://127.0.0.1:7890",
       cloudProvider: "openrouter",
@@ -41,11 +42,14 @@ async function main() {
     assert.equal(result.ok, true);
     assert.equal(config.runtime.runnerMode, "mock");
     assert.equal(config.agents.every((agent) => agent.modelId === "openrouter-auto"), true);
+    assert.deepEqual(config.models.map((model) => model.id), ["openrouter-auto", "openai-gpt-4o-mini"]);
     assert.doesNotMatch(envFile, /test-key/);
     assert.match(envFile, /services\/secrets\.env/);
     assert.match(envFile, /HTTP_PROXY=http:\/\/127\.0\.0\.1:7890/);
     assert.equal(plan.modelId, "openrouter-auto");
+    assert.deepEqual(plan.selectedModelIds, ["openrouter-auto", "openai-gpt-4o-mini"]);
     assert.equal(Array.isArray(plan.commands), true);
+    assert.notEqual(plan.commands[1], "npm install");
     assert.equal(Array.isArray(plan.serviceCommands), true);
     assert.equal(env.AGENT_STUDIO_OPENROUTER_API_KEY, "test-key");
     assert.equal(launchStep.url, "http://127.0.0.1:3000");
