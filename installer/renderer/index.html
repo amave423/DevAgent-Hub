@@ -105,8 +105,21 @@
           <ol id="commands" class="commands"></ol>
         </section>
 
+        <section id="install-panel" class="install-panel hidden" aria-live="polite">
+          <div class="section-title">
+            <h2>Выполнение</h2>
+            <span id="install-status">Ожидание</span>
+          </div>
+          <div class="progress-track">
+            <span id="install-progress"></span>
+          </div>
+          <pre id="install-log" class="install-log"></pre>
+        </section>
+
         <footer>
           <button id="prepare-install" class="primary" type="button">Подготовить установку</button>
+          <button id="start-install" class="primary" type="button">Запустить установку</button>
+          <button id="cancel-install" type="button" disabled>Остановить</button>
         </footer>
       </section>
     </main>

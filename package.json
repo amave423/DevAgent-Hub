@@ -16,7 +16,8 @@
     "typecheck": "npm --workspace apps/web run typecheck",
     "smoke:agent-studio": ".venv\\Scripts\\python.exe scripts\\smoke_agent_studio.py",
     "smoke:openhands-app": "vendor\\OpenHands\\.venv\\Scripts\\python.exe scripts\\smoke_openhands_app.py",
-    "smoke:installer": "node scripts\\smoke_installer_prepare.js"
+    "smoke:installer": "node scripts\\smoke_installer_prepare.js && node scripts\\smoke_installer_runner.js",
+    "smoke:installer-runner": "node scripts\\smoke_installer_runner.js"
   },
   "engines": {
     "node": ">=20"

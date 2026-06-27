@@ -98,6 +98,115 @@ async function prepareInstall(rawSettings) {
   };
 }
 
+function buildInstallExecutionSteps(rawSettings) {
+  const settings = normalizeSettings(rawSettings);
+  const rootPython = process.platform === "win32"
+    ? path.join(settings.installPath, ".venv", "Scripts", "python.exe")
+    : path.join(settings.installPath, ".venv", "bin", "python");
+  const rootUv = process.platform === "win32"
+    ? path.join(settings.installPath, ".venv", "Scripts", "uv.exe")
+    : path.join(settings.installPath, ".venv", "bin", "uv");
+  const openHandsPython = process.platform === "win32"
+    ? path.join(settings.installPath, "vendor", "OpenHands", ".venv", "Scripts", "python.exe")
+    : path.join(settings.installPath, "vendor", "OpenHands", ".venv", "bin", "python");
+  const openHandsDir = path.join(settings.installPath, "vendor", "OpenHands");
+  const openHandsFrontendDir = path.join(openHandsDir, "frontend");
+
+  return [
+    {
+      id: "root-npm-install",
+      label: "Установка Node.js зависимостей проекта",
+      cwd: settings.installPath,
+      command: platformCommand("npm"),
+      args: ["install"],
+    },
+    {
+      id: "root-python-venv",
+      label: "Создание Python venv",
+      cwd: settings.installPath,
+      command: process.platform === "win32" ? "py" : "python3",
+      args: process.platform === "win32"
+        ? ["-3.12", "-m", "venv", ".venv"]
+        : ["-m", "venv", ".venv"],
+    },
+    {
+      id: "root-install-uv",
+      label: "Установка uv",
+      cwd: settings.installPath,
+      command: rootPython,
+      args: ["-m", "pip", "install", "uv"],
+    },
+    {
+      id: "openhands-uv-sync",
+      label: "Установка Python зависимостей OpenHands",
+      cwd: openHandsDir,
+      command: rootUv,
+      args: ["sync", "--frozen", "--no-dev", "--python", rootPython],
+    },
+    {
+      id: "openhands-frontend-install",
+      label: "Установка frontend зависимостей OpenHands",
+      cwd: openHandsFrontendDir,
+      command: platformCommand("npm"),
+      args: ["install"],
+    },
+    {
+      id: "openhands-frontend-build",
+      label: "Сборка frontend OpenHands",
+      cwd: openHandsFrontendDir,
+      command: platformCommand("npm"),
+      args: ["run", "build"],
+    },
+    {
+      id: "agent-studio-smoke",
+      label: "Проверка Agent Studio API",
+      cwd: settings.installPath,
+      command: platformCommand("npm"),
+      args: ["run", "smoke:agent-studio"],
+    },
+    {
+      id: "openhands-app-smoke",
+      label: "Проверка OpenHands app API",
+      cwd: settings.installPath,
+      command: platformCommand("npm"),
+      args: ["run", "smoke:openhands-app"],
+      env: {
+        OPENHANDS_APP_SMOKE_PYTHON: openHandsPython,
+      },
+    },
+  ];
+}
+
+function buildProcessEnv(rawSettings) {
+  const settings = normalizeSettings(rawSettings);
+  const env = {
+    ...process.env,
+    AGENT_STUDIO_CONFIG_PATH: path.join(settings.installPath, "configs", "agents.json"),
+    AGENT_STUDIO_RUNNER_MODE: settings.runnerMode,
+    AGENT_STUDIO_APP_TITLE: "DevAgent Hub",
+    OPENHANDS_SUPPRESS_BANNER: "1",
+    OH_PERSISTENCE_DIR: path.join(settings.installPath, ".openhands"),
+    OLLAMA_BASE_URL: "http://localhost:11434",
+  };
+
+  if (settings.proxyUrl) {
+    env.HTTP_PROXY = settings.proxyUrl;
+    env.HTTPS_PROXY = settings.proxyUrl;
+    env.NO_PROXY = "localhost,127.0.0.1";
+  }
+
+  const baseUrl = settings.cloudBaseUrl || providerBaseUrl(settings.cloudProvider);
+  if (baseUrl) {
+    env.OPENHANDS_PROVIDER_BASE_URL = baseUrl;
+  }
+
+  if (settings.apiKey) {
+    env[providerApiKeyName(settings.cloudProvider)] = settings.apiKey;
+  }
+
+  return env;
+}
+
 function commandCandidate(command, args) {
   return { command, args };
 }
@@ -395,7 +504,10 @@ function buildReadme(settings, commands) {
 }
 
 module.exports = {
+  buildInstallExecutionSteps,
+  buildProcessEnv,
   checkSystem,
   getInstallerDefaults,
+  normalizeSettings,
   prepareInstall,
 };

@@ -112,7 +112,8 @@ p,
 }
 
 .checks-panel,
-.result-panel {
+.result-panel,
+.install-panel {
   display: grid;
   gap: 12px;
 }
@@ -239,6 +240,7 @@ footer button {
 footer {
   display: flex;
   justify-content: flex-end;
+  gap: 10px;
 }
 
 footer button.primary {
@@ -247,13 +249,47 @@ footer button.primary {
   color: #ffffff;
 }
 
-.result-panel {
+.result-panel,
+.install-panel {
   border-top: 1px solid #d8e0e3;
   padding-top: 18px;
 }
 
-.result-panel.hidden {
+.result-panel.hidden,
+.install-panel.hidden {
   display: none;
+}
+
+.progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: #dce5e8;
+  overflow: hidden;
+}
+
+.progress-track span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: #147a63;
+  transition: width 160ms ease;
+}
+
+.install-log {
+  min-height: 180px;
+  max-height: 280px;
+  margin: 0;
+  overflow: auto;
+  border: 1px solid #c7d1d5;
+  border-radius: 8px;
+  padding: 12px;
+  background: #111719;
+  color: #e7f0ed;
+  white-space: pre-wrap;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .warnings {

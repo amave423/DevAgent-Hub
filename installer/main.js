@@ -1,11 +1,17 @@
 const { app, BrowserWindow, dialog, ipcMain } = require("electron");
+const { randomUUID } = require("node:crypto");
 const path = require("node:path");
 
 const {
+  buildInstallExecutionSteps,
+  buildProcessEnv,
   checkSystem,
   getInstallerDefaults,
   prepareInstall,
 } = require("./install-service");
+const { InstallCommandRunner } = require("./install-runner");
+
+let activeInstall = null;
 
 function createWindow() {
   const window = new BrowserWindow({
@@ -52,3 +58,91 @@ ipcMain.handle("dialog:select-install-dir", async () => {
 ipcMain.handle("install:prepare", async (_event, rawSettings) => {
   return prepareInstall(rawSettings);
 });
+
+ipcMain.handle("install:start", async (event, rawSettings) => {
+  if (activeInstall) {
+    return {
+      ok: false,
+      error: "Установка уже выполняется",
+      runId: activeInstall.runId,
+    };
+  }
+
+  const runId = randomUUID();
+  const sender = event.sender;
+  activeInstall = {
+    runId,
+    runner: null,
+    cancelRequested: false,
+  };
+
+  runInstall(runId, rawSettings, sender).catch(() => {
+    activeInstall = null;
+  });
+
+  return { ok: true, runId };
+});
+
+ipcMain.handle("install:cancel", async (_event, runId) => {
+  if (!activeInstall || activeInstall.runId !== runId) {
+    return { ok: false, error: "Активная установка не найдена" };
+  }
+
+  activeInstall.cancelRequested = true;
+  activeInstall.runner?.cancel();
+  return { ok: true };
+});
+
+async function runInstall(runId, rawSettings, sender) {
+  try {
+    sendInstallEvent(sender, runId, {
+      type: "prepare-start",
+      message: "Подготовка конфигурации",
+    });
+
+    const prepared = await prepareInstall(rawSettings);
+
+    sendInstallEvent(sender, runId, {
+      type: "prepare-complete",
+      message: "Конфигурация подготовлена",
+      files: prepared.files,
+      warnings: prepared.warnings,
+    });
+
+    if (activeInstall?.cancelRequested) {
+      sendInstallEvent(sender, runId, {
+        type: "run-cancelled",
+        message: "Установка отменена",
+      });
+      return;
+    }
+
+    const runner = new InstallCommandRunner({
+      steps: buildInstallExecutionSteps(rawSettings),
+      env: buildProcessEnv(rawSettings),
+    });
+
+    activeInstall.runner = runner;
+    runner.on("event", (payload) => sendInstallEvent(sender, runId, payload));
+
+    await runner.run();
+  } catch (error) {
+    if (!error.stepId) {
+      sendInstallEvent(sender, runId, {
+        type: "run-failed",
+        message: error.message,
+      });
+    }
+  } finally {
+    activeInstall = null;
+  }
+}
+
+function sendInstallEvent(sender, runId, payload) {
+  if (sender.isDestroyed()) return;
+  sender.send("install:event", {
+    runId,
+    timestamp: new Date().toISOString(),
+    ...payload,
+  });
+}

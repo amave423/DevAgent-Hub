@@ -5,7 +5,7 @@
   "main": "main.js",
   "scripts": {
     "dev": "electron .",
-    "check": "node --check main.js && node --check preload.js && node --check install-service.js && node --check renderer/installer.js"
+    "check": "node --check main.js && node --check preload.js && node --check install-service.js && node --check install-runner.js && node --check renderer/installer.js"
   },
   "dependencies": {
     "electron": "^42.5.0"
