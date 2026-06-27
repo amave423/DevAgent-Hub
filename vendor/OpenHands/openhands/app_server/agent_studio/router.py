@@ -49,6 +49,14 @@ async def get_task_status(task_id: str):
     return state
 
 
+@router.post('/cancel/{task_id}')
+async def cancel_task(task_id: str):
+    state = await task_registry.cancel(task_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail='Task not found')
+    return state
+
+
 @router.get('/logs/{task_id}')
 async def stream_task_logs(task_id: str) -> StreamingResponse:
     if await task_registry.get_state(task_id) is None:
@@ -78,4 +86,3 @@ async def stream_task_logs(task_id: str) -> StreamingResponse:
 
 def sse(event: str, payload: dict) -> str:
     return f'event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n'
-

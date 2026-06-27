@@ -8,6 +8,7 @@ import {
   Plus,
   Save,
   SlidersHorizontal,
+  Square,
   Trash2,
 } from "lucide-react";
 import AgentStudioService from "#/api/agent-studio-service/agent-studio.api";
@@ -131,6 +132,24 @@ export default function MultiAgentSettingsScreen() {
     }
   };
 
+  const handleCancel = async () => {
+    if (!taskState) return;
+    setError(null);
+    try {
+      const cancelledState = await AgentStudioService.cancel(taskState.taskId);
+      eventSourceRef.current?.close();
+      setTaskState(cancelledState);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Не удалось остановить цепочку.",
+      );
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
   if (isLoading || !config) {
     return (
       <div className="flex items-center gap-2 text-tertiary-alt">
@@ -232,6 +251,18 @@ export default function MultiAgentSettingsScreen() {
           >
             Запустить цепочку
           </BrandButton>
+
+          {isRunning && (
+            <BrandButton
+              type="button"
+              variant="secondary"
+              isDisabled={!taskState}
+              startContent={<Square size={16} />}
+              onClick={() => void handleCancel()}
+            >
+              Остановить
+            </BrandButton>
+          )}
 
           <div className="max-h-[360px] overflow-auto rounded-sm border border-[#3D4046] bg-base p-2">
             {logs.length === 0 ? (

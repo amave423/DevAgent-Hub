@@ -51,6 +51,11 @@ def main() -> int:
             f"{base_url}/status/{run_response['taskId']}",
         )
         logs_payload = get_text(opener, f"{base_url}/logs/{run_response['taskId']}")
+        cancel_response = post_json(
+            opener,
+            f"{base_url}/cancel/{run_response['taskId']}",
+            {},
+        )
 
         assert len(saved['models']) > 0
         assert run_response['status'] == 'queued'
@@ -58,6 +63,7 @@ def main() -> int:
         assert final_state['progress'] == 100
         assert final_state.get('result')
         assert 'event: done' in logs_payload
+        assert cancel_response['status'] == 'completed'
 
         print('Agent Studio smoke: OK')
         print(f"models={len(saved['models'])}")

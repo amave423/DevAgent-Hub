@@ -44,6 +44,13 @@ class AgentStudioService {
     return data;
   }
 
+  static async cancel(taskId: string): Promise<TaskState> {
+    const { data } = await openHands.post<TaskState>(
+      `/api/v1/agents/cancel/${taskId}`,
+    );
+    return data;
+  }
+
   static subscribeToLogs(
     taskId: string,
     handlers: {

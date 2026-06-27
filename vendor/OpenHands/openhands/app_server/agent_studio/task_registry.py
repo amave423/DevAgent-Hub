@@ -66,6 +66,32 @@ class TaskRegistry:
                 return None
             return [log for log in task.logs if log.id > after_id]
 
+    async def cancel(self, task_id: str) -> TaskState | None:
+        async with self._lock:
+            managed = self._tasks.get(task_id)
+            if not managed:
+                return None
+
+            if managed.state.status in TERMINAL_STATUSES:
+                return managed.state
+
+            worker = managed.worker
+            managed.state.status = TaskStatus.cancelled
+            managed.state.activeAgentId = None
+            managed.state.updatedAt = utc_now()
+
+        if worker and not worker.done():
+            worker.cancel()
+
+        await self.append_log(
+            managed,
+            phase='cancel',
+            message='Multi-agent chain cancelled by user.',
+            progress=managed.state.progress,
+            level='warning',
+        )
+        return managed.state
+
     async def append_log(
         self,
         managed: ManagedTask,
@@ -196,6 +222,13 @@ class TaskRegistry:
                 progress=100,
                 level='success',
             )
+        except asyncio.CancelledError:
+            async with self._lock:
+                if managed.state.status != TaskStatus.cancelled:
+                    managed.state.status = TaskStatus.cancelled
+                    managed.state.activeAgentId = None
+                    managed.state.updatedAt = utc_now()
+            raise
         except Exception as exc:
             async with self._lock:
                 managed.state.status = TaskStatus.failed
