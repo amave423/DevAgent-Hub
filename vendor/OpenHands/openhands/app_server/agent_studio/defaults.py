@@ -110,6 +110,11 @@ DEFAULT_AGENT_STUDIO_CONFIG = {
             ),
         },
     ],
-    'runtime': {'maxParallelTasks': 2, 'logRetention': 2000},
+    'runtime': {
+        'maxParallelTasks': 2,
+        'logRetention': 2000,
+        'runnerMode': 'auto',
+        'requestTimeoutSeconds': 120,
+        'maxOutputChars': 12000,
+    },
 }
-

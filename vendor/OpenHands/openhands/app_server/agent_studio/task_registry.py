@@ -7,12 +7,14 @@ from dataclasses import dataclass, field
 from openhands.app_server.agent_studio.models import (
     AgentDefinition,
     AgentLogEvent,
+    AgentModel,
     AgentsConfig,
     RunAgentsRequest,
     TaskState,
     TaskStatus,
     utc_now,
 )
+from openhands.app_server.agent_studio.model_runner import AgentModelRunner
 
 
 TERMINAL_STATUSES = {
@@ -90,7 +92,9 @@ class TaskRegistry:
             managed.logs.append(log)
             managed.state.progress = progress
             managed.state.updatedAt = log.timestamp
-            managed.state.activeAgentId = agent.id if agent else managed.state.activeAgentId
+            managed.state.activeAgentId = (
+                agent.id if agent else managed.state.activeAgentId
+            )
 
     async def _run(
         self,
@@ -103,11 +107,19 @@ class TaskRegistry:
             if not agents:
                 raise ValueError('No enabled agents are available for the chain.')
 
+            model_by_id = {model.id: model for model in config.models}
+            runner = AgentModelRunner(
+                mode=config.runtime.runnerMode,
+                timeout_seconds=config.runtime.requestTimeoutSeconds,
+                max_output_chars=config.runtime.maxOutputChars,
+            )
             managed.state.status = TaskStatus.running
             await self.append_log(
                 managed,
                 phase='queue',
-                message='Task accepted by the multi-agent chain.',
+                message=(
+                    f'Task accepted by the multi-agent chain ({runner.mode} mode).'
+                ),
                 progress=2,
             )
 
@@ -116,32 +128,55 @@ class TaskRegistry:
             previous_output = request.task
 
             for agent in agents:
-                model_id = request.modelOverrides.get(agent.id, agent.modelId)
+                model = resolve_model(agent, request, model_by_id)
                 await self.append_log(
                     managed,
                     agent=agent,
                     phase='prompt',
-                    message=f'{agent.name}: preparing prompt for {model_id}.',
+                    message=(
+                        f'{agent.name}: preparing prompt for '
+                        f'{model.provider}/{model.name}.'
+                    ),
                     progress=round(accumulated),
                     level='debug',
                 )
-                await asyncio.sleep(0.35)
 
                 await self.append_log(
                     managed,
                     agent=agent,
                     phase='run',
-                    message=f'{agent.name}: running chain step.',
+                    message=(
+                        f'{agent.name}: running chain step with {model.name}.'
+                    ),
                     progress=round(accumulated + step_weight * 0.45),
                 )
-                await asyncio.sleep(0.55)
 
-                previous_output = build_simulated_output(agent, previous_output)
+                step_result = await runner.run_step(
+                    agent=agent,
+                    model=model,
+                    original_task=request.task,
+                    input_text=previous_output,
+                )
+                previous_output = step_result.output
+
+                if step_result.fallback_reason:
+                    await self.append_log(
+                        managed,
+                        agent=agent,
+                        phase='fallback',
+                        message=(
+                            f'{agent.name}: using simulated fallback because '
+                            f'{step_result.fallback_reason}'
+                        ),
+                        progress=round(accumulated + step_weight * 0.65),
+                        level='warning',
+                    )
+
                 await self.append_log(
                     managed,
                     agent=agent,
                     phase='result',
-                    message=f'{agent.name}: step completed.',
+                    message=result_message(agent, step_result.used_live_model),
                     progress=round(accumulated + step_weight * 0.85),
                     level='success',
                 )
@@ -176,14 +211,28 @@ class TaskRegistry:
             )
 
 
-def select_agents(request: RunAgentsRequest, config: AgentsConfig) -> list[AgentDefinition]:
+def select_agents(
+    request: RunAgentsRequest,
+    config: AgentsConfig,
+) -> list[AgentDefinition]:
     source = request.agents if request.agents is not None else config.agents
     return sorted((agent for agent in source if agent.enabled), key=lambda agent: agent.order)
 
 
-def build_simulated_output(agent: AgentDefinition, input_text: str) -> str:
-    compact = ' '.join(input_text.strip().split())
-    if len(compact) > 260:
-        compact = compact[:257] + '...'
-    return f'[{agent.name}] {compact}'
+def resolve_model(
+    agent: AgentDefinition,
+    request: RunAgentsRequest,
+    model_by_id: dict[str, AgentModel],
+) -> AgentModel:
+    model_id = request.modelOverrides.get(agent.id, agent.modelId)
+    model = model_by_id.get(model_id)
+    if model is None:
+        raise ValueError(
+            f'Model "{model_id}" configured for {agent.name} was not found.'
+        )
+    return model
 
+
+def result_message(agent: AgentDefinition, used_live_model: bool) -> str:
+    source = 'live model' if used_live_model else 'simulated runner'
+    return f'{agent.name}: step completed by {source}.'

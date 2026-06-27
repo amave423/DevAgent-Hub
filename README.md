@@ -51,3 +51,29 @@ npm run dev:web
 - добавить FastAPI router из `services/agent-api/app` в backend OpenHands или оставить его отдельным сервисом и проксировать `/api/agents`;
 - заменить имитационный раннер в `task_runner.py` вызовом реального `agent_system.py`.
 
+## Agent Studio live runtime
+
+OpenHands integration in `vendor/OpenHands/openhands/app_server/agent_studio` supports three runner modes:
+
+- `auto` - try a live model and fall back to the simulated runner when credentials or a local model are unavailable.
+- `live` - require a live model call and fail the task on provider errors.
+- `mock` - use the simulated runner only.
+
+The mode can be changed in `/settings/multi-agents` or by setting `AGENT_STUDIO_RUNNER_MODE`.
+
+API keys are read from environment variables and are not stored in `agents.json`:
+
+```powershell
+$env:OPENAI_API_KEY = "..."
+$env:OPENROUTER_API_KEY = "..."
+$env:DEEPSEEK_API_KEY = "..."
+```
+
+Provider-specific Agent Studio keys also work:
+
+```powershell
+$env:AGENT_STUDIO_OPENAI_API_KEY = "..."
+$env:AGENT_STUDIO_OPENROUTER_API_KEY = "..."
+```
+
+Ollama uses `http://localhost:11434` by default and does not need an API key.

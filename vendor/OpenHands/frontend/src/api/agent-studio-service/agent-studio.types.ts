@@ -34,6 +34,9 @@ export interface AgentDefinition {
 export interface RuntimeConfig {
   maxParallelTasks: number;
   logRetention: number;
+  runnerMode: "auto" | "live" | "mock";
+  requestTimeoutSeconds: number;
+  maxOutputChars: number;
 }
 
 export interface AgentsConfig {

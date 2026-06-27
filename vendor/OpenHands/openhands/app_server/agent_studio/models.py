@@ -50,6 +50,9 @@ class AgentDefinition(BaseModel):
 class RuntimeConfig(BaseModel):
     maxParallelTasks: int = Field(default=2, ge=1, le=16)
     logRetention: int = Field(default=2000, ge=100, le=100000)
+    runnerMode: Literal['auto', 'live', 'mock'] = 'auto'
+    requestTimeoutSeconds: int = Field(default=120, ge=5, le=600)
+    maxOutputChars: int = Field(default=12000, ge=1000, le=100000)
 
 
 class AgentsConfig(BaseModel):
@@ -96,4 +99,3 @@ class TaskState(BaseModel):
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
-

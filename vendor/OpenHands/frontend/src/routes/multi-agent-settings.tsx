@@ -7,6 +7,7 @@ import {
   Play,
   Plus,
   Save,
+  SlidersHorizontal,
   Trash2,
 } from "lucide-react";
 import AgentStudioService from "#/api/agent-studio-service/agent-studio.api";
@@ -188,6 +189,8 @@ export default function MultiAgentSettingsScreen() {
               onDelete={() => deleteAgent(agent.id, config, updateConfig)}
             />
           ))}
+
+          <RuntimePanel config={config} updateConfig={updateConfig} />
         </div>
 
         <aside className="flex flex-col gap-4 rounded-sm border border-[#3D4046] bg-tertiary p-4">
@@ -281,6 +284,92 @@ export default function MultiAgentSettingsScreen() {
         </BrandButton>
       </div>
     </div>
+  );
+}
+
+function RuntimePanel({
+  config,
+  updateConfig,
+}: {
+  config: AgentsConfig;
+  updateConfig: (updater: (current: AgentsConfig) => AgentsConfig) => void;
+}) {
+  const patchRuntime = (patch: Partial<AgentsConfig["runtime"]>) => {
+    updateConfig((current) => ({
+      ...current,
+      runtime: {
+        ...current.runtime,
+        ...patch,
+      },
+    }));
+  };
+
+  return (
+    <section className="rounded-sm border border-[#3D4046] bg-tertiary p-4">
+      <div className="mb-4 flex items-center gap-2">
+        <SlidersHorizontal size={18} />
+        <Typography.H3>Выполнение</Typography.H3>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <label className="flex flex-col gap-1.5">
+          <Typography.Text className="text-xs text-tertiary-alt">
+            Режим
+          </Typography.Text>
+          <select
+            className="h-9 rounded-sm border border-[#717888] bg-base px-2 text-sm text-white focus:border-white focus:outline-none"
+            value={config.runtime.runnerMode}
+            onChange={(event) =>
+              patchRuntime({
+                runnerMode: event.target
+                  .value as AgentsConfig["runtime"]["runnerMode"],
+              })
+            }
+          >
+            <option value="auto">Auto</option>
+            <option value="live">Live only</option>
+            <option value="mock">Mock</option>
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <Typography.Text className="text-xs text-tertiary-alt">
+            Timeout, sec
+          </Typography.Text>
+          <input
+            type="number"
+            min={5}
+            max={600}
+            className="h-9 rounded-sm border border-[#717888] bg-base px-2 text-sm text-white focus:border-white focus:outline-none"
+            value={config.runtime.requestTimeoutSeconds}
+            onChange={(event) =>
+              patchRuntime({
+                requestTimeoutSeconds: clampInteger(event.target.value, 5, 600),
+              })
+            }
+          />
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <Typography.Text className="text-xs text-tertiary-alt">
+            Max output
+          </Typography.Text>
+          <input
+            type="number"
+            min={1000}
+            max={100000}
+            step={1000}
+            className="h-9 rounded-sm border border-[#717888] bg-base px-2 text-sm text-white focus:border-white focus:outline-none"
+            value={config.runtime.maxOutputChars}
+            onChange={(event) =>
+              patchRuntime({
+                maxOutputChars: clampInteger(event.target.value, 1000, 100000),
+              })
+            }
+          />
+        </label>
+      </div>
+    </section>
   );
 }
 
@@ -459,9 +548,28 @@ function moveAgent(
 function normalizeAgentOrder(config: AgentsConfig): AgentsConfig {
   return {
     ...config,
+    runtime: normalizeRuntime(config.runtime),
     agents: config.agents
       .slice()
       .sort((a, b) => a.order - b.order)
       .map((agent, index) => ({ ...agent, order: index + 1 })),
   };
+}
+
+function normalizeRuntime(
+  runtime: Partial<AgentsConfig["runtime"]>,
+): AgentsConfig["runtime"] {
+  return {
+    maxParallelTasks: runtime.maxParallelTasks ?? 2,
+    logRetention: runtime.logRetention ?? 2000,
+    runnerMode: runtime.runnerMode ?? "auto",
+    requestTimeoutSeconds: runtime.requestTimeoutSeconds ?? 120,
+    maxOutputChars: runtime.maxOutputChars ?? 12000,
+  };
+}
+
+function clampInteger(value: string, min: number, max: number) {
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed)) return min;
+  return Math.min(max, Math.max(min, parsed));
 }
