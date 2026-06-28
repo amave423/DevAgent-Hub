@@ -4,6 +4,7 @@ import asyncio
 import uuid
 from dataclasses import dataclass, field
 
+from .llm import get_provider
 from .models import AgentDefinition, AgentLogEvent, AgentsConfig, RunAgentsRequest, TaskState, TaskStatus, utc_now
 
 
@@ -16,6 +17,7 @@ class ManagedTask:
     logs: list[AgentLogEvent] = field(default_factory=list)
     worker: asyncio.Task[None] | None = None
     next_log_id: int = 1
+    cancelled: bool = False
 
 
 class TaskRegistry:
@@ -51,6 +53,16 @@ class TaskRegistry:
             if not task:
                 return None
             return [log for log in task.logs if log.id > after_id]
+
+    async def cancel(self, task_id: str) -> bool:
+        async with self._lock:
+            task = self._tasks.get(task_id)
+            if task is None:
+                return False
+            task.cancelled = True
+            if task.worker and not task.worker.done():
+                task.worker.cancel()
+            return True
 
     async def append_log(
         self,
@@ -99,7 +111,13 @@ class TaskRegistry:
             previous_output = request.task
 
             for agent in agents:
+                if managed.cancelled:
+                    raise asyncio.CancelledError()
+
                 model_id = request.modelOverrides.get(agent.id, agent.modelId)
+                model_info = next((m for m in config.models if m.id == model_id), None)
+                provider_id = model_info.provider if model_info else "mock"
+
                 await self.append_log(
                     managed,
                     agent=agent,
@@ -108,7 +126,6 @@ class TaskRegistry:
                     progress=round(accumulated),
                     level="debug",
                 )
-                await asyncio.sleep(0.35)
 
                 await self.append_log(
                     managed,
@@ -117,9 +134,37 @@ class TaskRegistry:
                     message=f"{agent.name}: выполнение шага над текущим вариантом результата.",
                     progress=round(accumulated + step_weight * 0.45),
                 )
-                await asyncio.sleep(0.55)
 
-                previous_output = build_simulated_output(agent, previous_output)
+                # Build messages for the LLM call
+                messages = [
+                    {"role": "system", "content": agent.systemPrompt},
+                    {"role": "user", "content": previous_output},
+                ]
+
+                provider = get_provider(provider_id, model_info.model_dump() if model_info else None)
+                model_name = model_info.name if model_info else model_id
+
+                try:
+                    result = await provider.chat(
+                        model=model_name,
+                        messages=messages,
+                        temperature=0.7,
+                        max_tokens=config.runtime.maxOutputChars,
+                    )
+                    previous_output = result or build_simulated_output(agent, previous_output)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    previous_output = build_simulated_output(agent, previous_output)
+                    await self.append_log(
+                        managed,
+                        agent=agent,
+                        phase="fallback",
+                        message=f"{agent.name}: ошибка вызова модели ({exc}), использован fallback.",
+                        progress=round(accumulated + step_weight * 0.7),
+                        level="warning",
+                    )
+
                 await self.append_log(
                     managed,
                     agent=agent,
@@ -144,7 +189,18 @@ class TaskRegistry:
                 progress=100,
                 level="success",
             )
-        except Exception as exc:  # noqa: BLE001 - API task runner must surface errors as task state.
+        except asyncio.CancelledError:
+            async with self._lock:
+                managed.state.status = TaskStatus.cancelled
+                managed.state.updatedAt = utc_now()
+            await self.append_log(
+                managed,
+                phase="cancelled",
+                message="Задача отменена пользователем.",
+                progress=managed.state.progress,
+                level="warning",
+            )
+        except Exception as exc:
             async with self._lock:
                 managed.state.status = TaskStatus.failed
                 managed.state.error = str(exc)
@@ -168,4 +224,3 @@ def build_simulated_output(agent: AgentDefinition, input_text: str) -> str:
     if len(compact) > 260:
         compact = compact[:257] + "..."
     return f"[{agent.name}] {compact}"
-
