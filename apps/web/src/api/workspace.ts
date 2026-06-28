@@ -1,6 +1,7 @@
 import type {
   GitCommitRequest,
   GitHubCreateRepoRequest,
+  GitHubPullRequestRequest,
   GitPushRequest,
   StartOpenVSCodeRequest,
   WorkspaceActionResponse,
@@ -60,6 +61,28 @@ export function commitGitChanges(payload: GitCommitRequest): Promise<WorkspaceAc
 
 export function pushGitChanges(payload: GitPushRequest): Promise<WorkspaceActionResponse> {
   return request<WorkspaceActionResponse>("/api/workspace/git/push", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function installOpenVSCode(): Promise<WorkspaceActionResponse> {
+  return request<WorkspaceActionResponse>("/api/workspace/openvscode/install", {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+export function listWorkspaceFiles(path = "."): Promise<Array<{ name: string; path: string; isDirectory: boolean; size: number }>> {
+  return request(`${API_BASE_URL}/api/workspace/files?path=${encodeURIComponent(path)}`);
+}
+
+export function readFileContent(path: string): Promise<{ path: string; content: string }> {
+  return request(`${API_BASE_URL}/api/workspace/files/content?path=${encodeURIComponent(path)}`);
+}
+
+export function createGitHubPullRequest(payload: GitHubPullRequestRequest): Promise<WorkspaceActionResponse> {
+  return request<WorkspaceActionResponse>("/api/workspace/github/pull-request", {
     method: "POST",
     body: JSON.stringify(payload),
   });

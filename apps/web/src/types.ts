@@ -178,3 +178,12 @@ export interface GitPushRequest {
   branch?: string | null;
   setUpstream?: boolean;
 }
+
+export interface GitHubPullRequestRequest {
+  owner: string;
+  repository: string;
+  title: string;
+  head: string;
+  base?: string;
+  body?: string;
+}

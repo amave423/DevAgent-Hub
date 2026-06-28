@@ -1,0 +1,106 @@
+import { BrainCircuit } from "lucide-react";
+import type { AgentDefinition, AgentsConfig } from "../types";
+import type { CopyKey } from "../i18n/ru";
+
+export function AgentsPanel({
+  config,
+  activeAgentId,
+  onChange,
+  t,
+}: {
+  config: AgentsConfig;
+  activeAgentId?: string | null;
+  onChange: (agents: AgentDefinition[]) => void;
+  t: (key: CopyKey) => string;
+}) {
+  const agents = config.agents.slice().sort((left, right) => left.order - right.order);
+
+  function patchAgent(id: string, patch: Partial<AgentDefinition>) {
+    onChange(agents.map((agent) => (agent.id === id ? { ...agent, ...patch } : agent)));
+  }
+
+  function moveAgent(id: string, direction: -1 | 1) {
+    const index = agents.findIndex((agent) => agent.id === id);
+    const targetIndex = index + direction;
+    if (index < 0 || targetIndex < 0 || targetIndex >= agents.length) return;
+    const next = agents.slice();
+    const [agent] = next.splice(index, 1);
+    next.splice(targetIndex, 0, agent);
+    onChange(next.map((item, itemIndex) => ({ ...item, order: itemIndex + 1 })));
+  }
+
+  function addAgent() {
+    onChange([
+      ...agents,
+      {
+        id: `agent-${Date.now()}`,
+        name: "New Agent",
+        enabled: true,
+        order: agents.length + 1,
+        modelId: config.models[0]?.id ?? "",
+        systemPrompt: "Define this agent role and its quality criteria.",
+      },
+    ]);
+  }
+
+  return (
+    <div className="tab-panel">
+      <div className="section-heading">
+        <div>
+          <h2>{t("agentsTitle")}</h2>
+          <span>Configure order, role prompts and per-agent models.</span>
+        </div>
+        <button className="secondary-button" onClick={addAgent}>
+          <BrainCircuit size={16} />
+          {t("addAgent")}
+        </button>
+      </div>
+      <div className="agent-grid">
+        {agents.map((agent, index) => {
+          const model = config.models.find((item) => item.id === agent.modelId);
+          return (
+            <article className={`agent-card ${activeAgentId === agent.id ? "active" : ""}`} key={agent.id}>
+              <header>
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    checked={agent.enabled}
+                    onChange={(event) => patchAgent(agent.id, { enabled: event.target.checked })}
+                  />
+                  <span />
+                </label>
+                <div>
+                  <input value={agent.name} onChange={(event) => patchAgent(agent.id, { name: event.target.value })} />
+                  <small>{model?.name ?? "model not set"}</small>
+                </div>
+              </header>
+              <select value={agent.modelId} onChange={(event) => patchAgent(agent.id, { modelId: event.target.value })}>
+                {config.models.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name} · {item.provider}
+                  </option>
+                ))}
+              </select>
+              <textarea
+                value={agent.systemPrompt}
+                onChange={(event) => patchAgent(agent.id, { systemPrompt: event.target.value })}
+                rows={6}
+              />
+              <footer>
+                <button className="icon-button" onClick={() => moveAgent(agent.id, -1)} disabled={index === 0}>
+                  ↑
+                </button>
+                <button className="icon-button" onClick={() => moveAgent(agent.id, 1)} disabled={index === agents.length - 1}>
+                  ↓
+                </button>
+                <button className="danger-button" onClick={() => onChange(agents.filter((item) => item.id !== agent.id))}>
+                  {t("remove")}
+                </button>
+              </footer>
+            </article>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

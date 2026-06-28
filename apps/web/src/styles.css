@@ -826,3 +826,128 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+
+/* ----- Terminal ----- */
+.xterm-container {
+  height: 100%;
+  min-height: 500px;
+  border: 1px solid #2d3742;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #080a0c;
+}
+
+.xterm-container .xterm {
+  height: 100%;
+  padding: 8px;
+}
+
+/* ----- Agent chain progress visualization ----- */
+.chain-progress {
+  border: 1px solid #2d3742;
+  background: #151b21;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 14px;
+}
+
+.chain-progress h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.chain-steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chain-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #1a2026;
+  border: 1px solid #35414d;
+}
+
+.chain-step.done {
+  border-color: #2b745b;
+  background: #0f2920;
+}
+
+.chain-step.running {
+  border-color: #317293;
+  background: #0f2030;
+}
+
+.chain-step.failed {
+  border-color: #713540;
+  background: #2a1518;
+}
+
+.chain-step-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chain-step-status {
+  font-size: 14px;
+}
+
+.chain-step.done .chain-step-status {
+  color: #56c39a;
+}
+
+.chain-step.running .chain-step-status {
+  color: #56c39a;
+  animation: spin 0.8s linear infinite;
+}
+
+/* ----- Chat messages in chain ----- */
+.agent-step-result {
+  font-size: 13px;
+  color: #56c39a;
+  margin: 0;
+}
+
+.final-result {
+  border-color: #56c39a;
+}
+
+/* ----- GitHub PR form ----- */
+.pr-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #2d3742;
+  background: #151b21;
+  border-radius: 8px;
+}
+
+/* ----- Danger button ----- */
+.danger-button {
+  height: 38px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 13px;
+  cursor: pointer;
+  color: #eef3f7;
+  background: #442129;
+  border: 1px solid #713540;
+}
+
+.danger-button:hover {
+  background: #5a2d37;
+}
+
+.danger-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

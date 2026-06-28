@@ -1,5 +1,8 @@
 import type { AgentLogEvent, AgentsConfig, RunAgentsResponse, TaskState } from "../types";
 
+// Re-export TaskState for convenience
+export type { TaskState };
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -43,6 +46,12 @@ export function runAgents(task: string, config: AgentsConfig): Promise<RunAgents
 
 export function getTaskStatus(taskId: string): Promise<TaskState> {
   return request<TaskState>(`/api/agents/status/${taskId}`);
+}
+
+export async function cancelTask(taskId: string): Promise<TaskState> {
+  return request<TaskState>(`/api/agents/cancel/${taskId}`, {
+    method: "POST",
+  });
 }
 
 export function subscribeToLogs(
