@@ -7,7 +7,8 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from .config_store import ConfigStore
 from .models import (
@@ -277,3 +278,38 @@ async def create_github_pull_request(request: GitHubPullRequestRequest) -> Works
 
 def sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def maybe_mount_frontend() -> None:
+    if os.getenv("SERVE_FRONTEND", "").lower() not in {"1", "true", "yes"}:
+        return
+
+    default_dist = Path(__file__).resolve().parents[3] / "apps" / "web" / "dist"
+    dist_path = Path(os.getenv("DEVAGENT_WEB_DIST", str(default_dist))).resolve()
+    index_path = dist_path / "index.html"
+    assets_path = dist_path / "assets"
+
+    if not index_path.exists():
+        return
+
+    if assets_path.exists():
+        app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_frontend(full_path: str) -> FileResponse:
+        if full_path.startswith(("api/", "health")):
+            raise HTTPException(status_code=404, detail="Not found")
+
+        requested = (dist_path / full_path).resolve()
+        try:
+            requested.relative_to(dist_path)
+        except ValueError:
+            requested = index_path
+
+        if requested.is_file():
+            return FileResponse(requested)
+
+        return FileResponse(index_path)
+
+
+maybe_mount_frontend()

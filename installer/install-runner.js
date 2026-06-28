@@ -33,7 +33,7 @@ class InstallCommandRunner extends EventEmitter {
       return { ok: true };
     } catch (error) {
       if (error instanceof InstallCancelledError || this.cancelRequested) {
-        this.emitEvent({ type: "run-cancelled", message: "Установка отменена" });
+        this.emitEvent({ type: "run-cancelled", message: "Installation cancelled." });
         return { ok: false, cancelled: true };
       }
 
@@ -66,6 +66,7 @@ class InstallCommandRunner extends EventEmitter {
         env: { ...this.env, ...(step.env ?? {}) },
         shell: false,
         windowsHide: true,
+        timeout: step.timeoutMs,
       });
 
       this.currentProcess = child;
@@ -89,10 +90,17 @@ class InstallCommandRunner extends EventEmitter {
       });
 
       child.on("error", (error) => {
+        this.currentProcess = null;
+        if (step.optional) {
+          this.emitOptionalWarning(step, index, error.message);
+          resolve();
+          return;
+        }
+
         reject(stepError(step, error.message, null));
       });
 
-      child.on("close", (code) => {
+      child.on("close", (code, signal) => {
         this.currentProcess = null;
 
         if (this.cancelRequested) {
@@ -113,8 +121,30 @@ class InstallCommandRunner extends EventEmitter {
           return;
         }
 
-        reject(stepError(step, `Команда завершилась с кодом ${code}`, code));
+        const message = signal
+          ? `Command stopped by signal ${signal}`
+          : `Command exited with code ${code}`;
+
+        if (step.optional) {
+          this.emitOptionalWarning(step, index, message, code);
+          resolve();
+          return;
+        }
+
+        reject(stepError(step, message, code));
       });
+    });
+  }
+
+  emitOptionalWarning(step, index, message, exitCode = null) {
+    this.emitEvent({
+      type: "step-warning",
+      stepId: step.id,
+      label: step.label,
+      index,
+      totalSteps: this.steps.length,
+      exitCode,
+      message,
     });
   }
 
@@ -128,7 +158,7 @@ class InstallCommandRunner extends EventEmitter {
 
 class InstallCancelledError extends Error {
   constructor() {
-    super("Установка отменена");
+    super("Installation cancelled.");
     this.name = "InstallCancelledError";
   }
 }

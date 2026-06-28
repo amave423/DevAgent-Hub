@@ -8,16 +8,16 @@ contextBridge.exposeInMainWorld("installerApi", {
   prepareInstall: (settings) => ipcRenderer.invoke("install:prepare", settings),
   startInstall: (settings) => ipcRenderer.invoke("install:start", settings),
   cancelInstall: (runId) => ipcRenderer.invoke("install:cancel", runId),
-  startOpenHands: (settings) => ipcRenderer.invoke("openhands:start", settings),
-  stopOpenHands: (runId) => ipcRenderer.invoke("openhands:stop", runId),
+  startDevHub: (settings) => ipcRenderer.invoke("devhub:start", settings),
+  stopDevHub: (runId) => ipcRenderer.invoke("devhub:stop", runId),
   onInstallEvent: (callback) => {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on("install:event", listener);
     return () => ipcRenderer.removeListener("install:event", listener);
   },
-  onOpenHandsEvent: (callback) => {
+  onDevHubEvent: (callback) => {
     const listener = (_event, payload) => callback(payload);
-    ipcRenderer.on("openhands:event", listener);
-    return () => ipcRenderer.removeListener("openhands:event", listener);
+    ipcRenderer.on("devhub:event", listener);
+    return () => ipcRenderer.removeListener("devhub:event", listener);
   },
 });

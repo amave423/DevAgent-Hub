@@ -4,8 +4,8 @@ const { randomUUID } = require("node:crypto");
 const path = require("node:path");
 
 const {
+  buildDevHubLaunchStep,
   buildInstallExecutionSteps,
-  buildOpenHandsLaunchStep,
   buildProcessEnv,
   checkSystem,
   getInstallerDefaults,
@@ -19,7 +19,7 @@ const {
 } = require("./secret-store");
 
 let activeInstall = null;
-let activeOpenHands = null;
+let activeDevHub = null;
 
 function createWindow() {
   const window = new BrowserWindow({
@@ -47,7 +47,7 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  activeOpenHands?.child.kill();
+  activeDevHub?.child.kill();
   if (process.platform !== "darwin") app.quit();
 });
 
@@ -57,7 +57,7 @@ ipcMain.handle("secrets:status", async (_event, rawSettings) => getSecretStatus(
 
 ipcMain.handle("dialog:select-install-dir", async () => {
   const result = await dialog.showOpenDialog({
-    title: "Выберите папку проекта",
+    title: "Select project directory",
     properties: ["openDirectory", "createDirectory"],
   });
 
@@ -75,7 +75,7 @@ ipcMain.handle("install:start", async (event, rawSettings) => {
   if (activeInstall) {
     return {
       ok: false,
-      error: "Установка уже выполняется",
+      error: "Installation is already running.",
       runId: activeInstall.runId,
     };
   }
@@ -97,7 +97,7 @@ ipcMain.handle("install:start", async (event, rawSettings) => {
 
 ipcMain.handle("install:cancel", async (_event, runId) => {
   if (!activeInstall || activeInstall.runId !== runId) {
-    return { ok: false, error: "Активная установка не найдена" };
+    return { ok: false, error: "Active installation was not found." };
   }
 
   activeInstall.cancelRequested = true;
@@ -105,82 +105,82 @@ ipcMain.handle("install:cancel", async (_event, runId) => {
   return { ok: true };
 });
 
-ipcMain.handle("openhands:start", async (event, rawSettings) => {
-  if (activeOpenHands) {
+ipcMain.handle("devhub:start", async (event, rawSettings) => {
+  if (activeDevHub) {
     return {
       ok: false,
-      error: "OpenHands уже запущен",
-      runId: activeOpenHands.runId,
-      url: activeOpenHands.url,
+      error: "DevAgent Hub is already running.",
+      runId: activeDevHub.runId,
+      url: activeDevHub.url,
     };
   }
 
   const runId = randomUUID();
   const settingsWithSecret = await withStoredApiKey(rawSettings);
-  const step = buildOpenHandsLaunchStep(settingsWithSecret);
+  const step = buildDevHubLaunchStep(settingsWithSecret);
   const child = spawn(step.command, step.args, {
     cwd: step.cwd,
     env: {
       ...buildProcessEnv(settingsWithSecret),
-      SERVE_FRONTEND: "true",
+      ...(step.env ?? {}),
     },
     shell: false,
     windowsHide: true,
   });
 
-  activeOpenHands = {
+  activeDevHub = {
     runId,
     child,
     url: step.url,
   };
 
-  sendOpenHandsEvent(event.sender, runId, {
+  sendDevHubEvent(event.sender, runId, {
     type: "process-start",
-    message: `OpenHands запускается: ${step.url}`,
+    message: `DevAgent Hub is starting: ${step.url}`,
     url: step.url,
     command: [step.command, ...step.args].join(" "),
   });
 
   child.stdout.on("data", (chunk) => {
-    sendOpenHandsEvent(event.sender, runId, {
+    sendDevHubEvent(event.sender, runId, {
       type: "stdout",
       message: chunk.toString(),
     });
   });
 
   child.stderr.on("data", (chunk) => {
-    sendOpenHandsEvent(event.sender, runId, {
+    sendDevHubEvent(event.sender, runId, {
       type: "stderr",
       message: chunk.toString(),
     });
   });
 
   child.on("error", (error) => {
-    sendOpenHandsEvent(event.sender, runId, {
+    sendDevHubEvent(event.sender, runId, {
       type: "process-error",
       message: error.message,
     });
-    activeOpenHands = null;
+    activeDevHub = null;
   });
 
   child.on("close", (code) => {
-    sendOpenHandsEvent(event.sender, runId, {
+    sendDevHubEvent(event.sender, runId, {
       type: "process-exit",
-      message: `OpenHands остановлен с кодом ${code}`,
+      message: `DevAgent Hub stopped with code ${code}`,
       exitCode: code,
     });
-    activeOpenHands = null;
+    activeDevHub = null;
   });
 
   return { ok: true, runId, url: step.url };
 });
 
-ipcMain.handle("openhands:stop", async (_event, runId) => {
-  if (!activeOpenHands || activeOpenHands.runId !== runId) {
-    return { ok: false, error: "Запущенный OpenHands не найден" };
+ipcMain.handle("devhub:stop", async (_event, runId) => {
+  if (!activeDevHub || activeDevHub.runId !== runId) {
+    return { ok: false, error: "Running DevAgent Hub process was not found." };
   }
 
-  activeOpenHands.child.kill();
+  activeDevHub.child.kill();
   return { ok: true };
 });
 
@@ -188,7 +188,7 @@ async function runInstall(runId, rawSettings, sender) {
   try {
     sendInstallEvent(sender, runId, {
       type: "prepare-start",
-      message: "Подготовка конфигурации",
+      message: "Preparing configuration.",
     });
 
     const secretResult = await persistApiKey(rawSettings);
@@ -200,7 +200,7 @@ async function runInstall(runId, rawSettings, sender) {
 
     sendInstallEvent(sender, runId, {
       type: "prepare-complete",
-      message: "Конфигурация подготовлена",
+      message: "Configuration is ready.",
       files: prepared.files,
       warnings: prepared.warnings,
     });
@@ -208,7 +208,7 @@ async function runInstall(runId, rawSettings, sender) {
     if (activeInstall?.cancelRequested) {
       sendInstallEvent(sender, runId, {
         type: "run-cancelled",
-        message: "Установка отменена",
+        message: "Installation cancelled.",
       });
       return;
     }
@@ -272,9 +272,9 @@ function sendInstallEvent(sender, runId, payload) {
   });
 }
 
-function sendOpenHandsEvent(sender, runId, payload) {
+function sendDevHubEvent(sender, runId, payload) {
   if (sender.isDestroyed()) return;
-  sender.send("openhands:event", {
+  sender.send("devhub:event", {
     runId,
     timestamp: new Date().toISOString(),
     ...payload,

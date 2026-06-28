@@ -11,7 +11,11 @@ def default_config_path() -> Path:
     env_path = os.getenv("AGENT_CONFIG_PATH")
     if env_path:
         return Path(env_path)
-    return Path(__file__).resolve().parents[3] / "configs" / "agents.json"
+    project_root = Path(__file__).resolve().parents[3]
+    runtime_config = project_root / ".devagent" / "agents.json"
+    if runtime_config.exists():
+        return runtime_config
+    return project_root / "configs" / "agents.json"
 
 
 class ConfigStore:
@@ -32,4 +36,3 @@ class ConfigStore:
             encoding="utf-8",
         )
         return config
-

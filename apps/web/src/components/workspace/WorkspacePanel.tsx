@@ -66,7 +66,7 @@ export function WorkspacePanel({ result, logs }: WorkspacePanelProps) {
           <textarea
             className="code-editor"
             spellCheck={false}
-            defaultValue={`export const chain = ["Generator", "Critic", "Optimizer", "Tester", "Finalizer"];\n\n// Monaco подключается при переносе в OpenHands frontend.`}
+            defaultValue={`export const chain = ["Generator", "Critic", "Optimizer", "Tester", "Finalizer"];\n\n// Browser editor is provided by OpenVSCode/code-server.`}
           />
         )}
 

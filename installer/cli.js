@@ -53,7 +53,9 @@ async function main() {
   }
 
   console.log("\nDevAgent Hub is ready.");
-  console.log("Web UI: http://127.0.0.1:3000");
+  console.log(shouldStartService
+    ? "Web UI: http://127.0.0.1:3000"
+    : "Manual start: services/start-devagent-hub.ps1 on Windows, or services/install-linux-systemd.sh on Linux.");
   console.log(`Install path: ${settings.installPath}`);
 }
 
@@ -295,6 +297,11 @@ async function runInstall(settings) {
 
     if (event.type === "step-complete") {
       console.log(`Done: ${event.label}`);
+      return;
+    }
+
+    if (event.type === "step-warning") {
+      console.warn(`Warning: ${event.label}: ${event.message}`);
       return;
     }
 

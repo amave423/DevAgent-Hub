@@ -206,7 +206,7 @@ class OpenVSCodeManager:
         return self.status()
 
     def install(self) -> WorkspaceActionResponse:
-        """Download code-server (portable) into .tools/ if not already present."""
+        """Install code-server into .tools/ if no browser editor is available."""
         target_dir = self.workspace_root / ".tools" / "code-server"
         existing = detect_openvscode_command(self.workspace_root)
         if existing:
@@ -216,65 +216,24 @@ class OpenVSCodeManager:
                 output=existing,
             )
 
-        import platform
-        import tempfile
-        import zipfile
-
         target_dir.mkdir(parents=True, exist_ok=True)
+        npm = shutil.which("npm.cmd" if os.name == "nt" else "npm") or shutil.which("npm")
+        if not npm:
+            raise RuntimeError("npm was not found in PATH. Install Node.js 22 before installing the browser code editor.")
 
-        # Use code-server as the default portable editor
-        version = "4.96.4"
-        system = platform.system().lower()
-        machine = platform.machine().lower()
-
-        if system == "windows":
-            arch = "x64" if "64" in machine or "amd64" in machine else "arm64"
-            archive_name = f"code-server-{version}-win-{arch}.zip"
-        elif system == "darwin":
-            arch = "arm64" if machine == "arm64" else "x64"
-            archive_name = f"code-server-{version}-macos-{arch}.tar.gz"
-        else:
-            arch = "arm64" if machine == "aarch64" else "amd64"
-            archive_name = f"code-server-{version}-linux-{arch}.tar.gz"
-
-        download_url = f"https://github.com/coder/code-server/releases/download/v{version}/{archive_name}"
-        tmp_archive = Path(tempfile.mkdtemp(prefix="code-server-")) / archive_name
-
-        try:
-            import urllib.request
-            urllib.request.urlretrieve(download_url, tmp_archive)
-
-            if archive_name.endswith(".zip"):
-                with zipfile.ZipFile(tmp_archive, "r") as zf:
-                    zf.extractall(target_dir)
-            else:
-                import tarfile
-                with tarfile.open(tmp_archive, "r:gz") as tf:
-                    tf.extractall(target_dir)
-
-            # Make binaries executable on Unix
-            if system != "windows":
-                for bin_path in target_dir.rglob("code-server"):
-                    bin_path.chmod(bin_path.stat().st_mode | 0o755)
-
-            result_cmd = detect_openvscode_command(self.workspace_root)
-            return WorkspaceActionResponse(
-                ok=True,
-                message="OpenVSCode Server installed successfully.",
-                output=result_cmd or str(target_dir),
-            )
-        except Exception as exc:
-            return WorkspaceActionResponse(
-                ok=False,
-                message=f"Installation failed: {exc}",
-                output="",
-            )
-        finally:
-            tmp_archive.unlink(missing_ok=True)
-            try:
-                tmp_archive.parent.rmdir()
-            except Exception:
-                pass
+        result = run_process(
+            [npm, "install", "--prefix", str(target_dir), "code-server@4.117.0"],
+            cwd=self.workspace_root,
+            timeout=900,
+        )
+        result_cmd = detect_openvscode_command(self.workspace_root)
+        if not result_cmd:
+            raise RuntimeError("code-server installation finished, but the executable was not found.")
+        return WorkspaceActionResponse(
+            ok=True,
+            message="Browser code editor installed successfully.",
+            output=f"{result_cmd}\n\n{result.stdout[-4000:]}",
+        )
 
     def _resolve_workspace(self, raw_path: str | None) -> Path:
         workspace = (Path(raw_path).expanduser() if raw_path else self.workspace_root).resolve()
@@ -386,7 +345,7 @@ def build_openvscode_message(command: str | None, running: bool, url: str | None
     return "OpenVSCode Server is not configured yet."
 
 
-def run_process(args: Sequence[str], *, cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
+def run_process(args: Sequence[str], *, cwd: Path, check: bool = True, timeout: int = 120) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         list(args),
         cwd=cwd,
@@ -394,7 +353,7 @@ def run_process(args: Sequence[str], *, cwd: Path, check: bool = True) -> subpro
         encoding="utf-8",
         errors="replace",
         capture_output=True,
-        timeout=120,
+        timeout=timeout,
     )
     if check and result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or result.stdout.strip() or f"Command failed: {' '.join(args)}")

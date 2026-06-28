@@ -5,9 +5,9 @@ const browsePathButton = document.getElementById("browse-path");
 const prepareButton = document.getElementById("prepare-install");
 const startInstallButton = document.getElementById("start-install");
 const cancelInstallButton = document.getElementById("cancel-install");
-const startOpenHandsButton = document.getElementById("start-openhands");
-const stopOpenHandsButton = document.getElementById("stop-openhands");
-const openHandsLinkElement = document.getElementById("openhands-link");
+const startDevHubButton = document.getElementById("start-devhub");
+const stopDevHubButton = document.getElementById("stop-devhub");
+const devHubLinkElement = document.getElementById("devhub-link");
 const formElement = document.getElementById("settings-form");
 const resultPanelElement = document.getElementById("result-panel");
 const resultStatusElement = document.getElementById("result-status");
@@ -26,18 +26,18 @@ const cloudBaseUrlInput = document.getElementById("cloud-base-url");
 
 let checksState = [];
 let activeRunId = null;
-let activeOpenHandsRunId = null;
+let activeDevHubRunId = null;
 
 runCheckButton.addEventListener("click", runSystemCheck);
 browsePathButton.addEventListener("click", selectInstallPath);
 prepareButton.addEventListener("click", prepareInstall);
 startInstallButton.addEventListener("click", startInstall);
 cancelInstallButton.addEventListener("click", cancelInstall);
-startOpenHandsButton.addEventListener("click", startOpenHands);
-stopOpenHandsButton.addEventListener("click", stopOpenHands);
+startDevHubButton.addEventListener("click", startDevHub);
+stopDevHubButton.addEventListener("click", stopDevHub);
 cloudProviderInput.addEventListener("change", syncCloudBaseUrl);
 window.installerApi.onInstallEvent(handleInstallEvent);
-window.installerApi.onOpenHandsEvent(handleOpenHandsEvent);
+window.installerApi.onDevHubEvent(handleDevHubEvent);
 
 boot();
 
@@ -50,16 +50,16 @@ async function boot() {
 }
 
 async function runSystemCheck() {
-  checksElement.innerHTML = '<div class="check pending">Проверка...</div>';
-  checksSummaryElement.textContent = "Выполняется";
+  checksElement.innerHTML = '<div class="check pending">Checking...</div>';
+  checksSummaryElement.textContent = "Running";
   runCheckButton.disabled = true;
 
   try {
     checksState = await window.installerApi.checkSystem();
     renderChecks(checksState);
   } catch (error) {
-    checksElement.innerHTML = `<div class="check fail">Ошибка проверки: ${escapeHtml(error.message)}</div>`;
-    checksSummaryElement.textContent = "Ошибка";
+    checksElement.innerHTML = `<div class="check fail">System check failed: ${escapeHtml(error.message)}</div>`;
+    checksSummaryElement.textContent = "Error";
   } finally {
     runCheckButton.disabled = false;
   }
@@ -71,14 +71,14 @@ function renderChecks(checks) {
 
   checksSummaryElement.textContent =
     failedRequired.length === 0
-      ? `${okCount}/${checks.length} готово`
-      : `Нужно исправить: ${failedRequired.length}`;
+      ? `${okCount}/${checks.length} ready`
+      : `Required fixes: ${failedRequired.length}`;
 
   checksElement.innerHTML = checks
     .map((check) => {
       const status = check.ok ? "ok" : "fail";
-      const badge = check.ok ? "OK" : "Нет";
-      const details = check.problem || check.output || "Готово";
+      const badge = check.ok ? "OK" : check.required ? "Missing" : "Optional";
+      const details = check.problem || check.output || "Ready";
 
       return `
         <article class="check ${status}">
@@ -99,7 +99,7 @@ async function selectInstallPath() {
 
 async function prepareInstall() {
   prepareButton.disabled = true;
-  prepareButton.textContent = "Подготовка...";
+  prepareButton.textContent = "Preparing...";
 
   try {
     const payload = formPayload();
@@ -109,25 +109,25 @@ async function prepareInstall() {
     renderError(error);
   } finally {
     prepareButton.disabled = false;
-    prepareButton.textContent = "Подготовить установку";
+    prepareButton.textContent = "Prepare install";
   }
 }
 
 async function startInstall() {
   resetInstallLog();
   setInstallRunning(true);
-  appendLog("Подготовка запуска установки...");
+  appendLog("Starting installer...");
 
   try {
     const response = await window.installerApi.startInstall(formPayload());
     if (!response.ok) {
-      throw new Error(response.error || "Не удалось запустить установку");
+      throw new Error(response.error || "Could not start installer.");
     }
 
     activeRunId = response.runId;
     appendLog(`Run ID: ${activeRunId}`);
   } catch (error) {
-    appendLog(`Ошибка: ${error.message}`, "error");
+    appendLog(`Error: ${error.message}`, "error");
     setInstallRunning(false);
   }
 }
@@ -135,35 +135,35 @@ async function startInstall() {
 async function cancelInstall() {
   if (!activeRunId) return;
   cancelInstallButton.disabled = true;
-  appendLog("Запрошена остановка...");
+  appendLog("Stop requested...");
   await window.installerApi.cancelInstall(activeRunId);
 }
 
-async function startOpenHands() {
+async function startDevHub() {
   installPanelElement.classList.remove("hidden");
-  appendLog("Запуск OpenHands...");
-  setOpenHandsRunning(true);
+  appendLog("Starting DevAgent Hub...");
+  setDevHubRunning(true);
 
   try {
-    const response = await window.installerApi.startOpenHands(formPayload());
+    const response = await window.installerApi.startDevHub(formPayload());
     if (!response.ok) {
-      throw new Error(response.error || "Не удалось запустить OpenHands");
+      throw new Error(response.error || "Could not start DevAgent Hub.");
     }
 
-    activeOpenHandsRunId = response.runId;
-    openHandsLinkElement.href = response.url;
-    openHandsLinkElement.classList.remove("hidden");
+    activeDevHubRunId = response.runId;
+    devHubLinkElement.href = response.url;
+    devHubLinkElement.classList.remove("hidden");
   } catch (error) {
-    appendLog(`Ошибка запуска OpenHands: ${error.message}`, "error");
-    setOpenHandsRunning(false);
+    appendLog(`DevAgent Hub start failed: ${error.message}`, "error");
+    setDevHubRunning(false);
   }
 }
 
-async function stopOpenHands() {
-  if (!activeOpenHandsRunId) return;
-  stopOpenHandsButton.disabled = true;
-  appendLog("Остановка OpenHands...");
-  await window.installerApi.stopOpenHands(activeOpenHandsRunId);
+async function stopDevHub() {
+  if (!activeDevHubRunId) return;
+  stopDevHubButton.disabled = true;
+  appendLog("Stopping DevAgent Hub...");
+  await window.installerApi.stopDevHub(activeDevHubRunId);
 }
 
 function formPayload() {
@@ -172,14 +172,14 @@ function formPayload() {
 
 function renderResult(result) {
   resultPanelElement.classList.remove("hidden");
-  resultStatusElement.textContent = result.ok ? "Готово" : "Ошибка";
+  resultStatusElement.textContent = result.ok ? "Ready" : "Error";
 
   warningsElement.innerHTML = result.warnings.length
     ? result.warnings.map((warning) => `<p>${escapeHtml(warning)}</p>`).join("")
     : "";
 
   filesElement.innerHTML = `
-    <strong>Файлы</strong>
+    <strong>Files</strong>
     ${result.files.map((file) => `<code>${escapeHtml(file)}</code>`).join("")}
   `;
 
@@ -190,7 +190,7 @@ function renderResult(result) {
 
 function renderError(error) {
   resultPanelElement.classList.remove("hidden");
-  resultStatusElement.textContent = "Ошибка";
+  resultStatusElement.textContent = "Error";
   warningsElement.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
   filesElement.innerHTML = "";
   commandsElement.innerHTML = "";
@@ -201,20 +201,20 @@ function handleInstallEvent(event) {
 
   switch (event.type) {
     case "prepare-start":
-      installStatusElement.textContent = "Подготовка";
+      installStatusElement.textContent = "Preparing";
       appendLog(event.message);
       break;
     case "prepare-complete":
-      installStatusElement.textContent = "Конфигурация готова";
+      installStatusElement.textContent = "Configuration ready";
       appendLog(event.message);
       if (event.warnings?.length) {
         event.warnings.forEach((warning) => appendLog(warning, "warning"));
       }
       break;
     case "run-start":
-      installStatusElement.textContent = "Выполняется";
+      installStatusElement.textContent = "Running";
       updateProgress(0, event.totalSteps);
-      appendLog(`Команд к выполнению: ${event.totalSteps}`);
+      appendLog(`Steps to run: ${event.totalSteps}`);
       break;
     case "step-start":
       installStatusElement.textContent = event.label;
@@ -229,24 +229,28 @@ function handleInstallEvent(event) {
       break;
     case "step-complete":
       updateProgress(event.index + 1, event.totalSteps);
-      appendLog(`Готово: ${event.label}`);
+      appendLog(`Done: ${event.label}`);
+      break;
+    case "step-warning":
+      updateProgress(event.index + 1, event.totalSteps);
+      appendLog(`${event.label}: ${event.message}`, "warning");
       break;
     case "run-complete":
-      installStatusElement.textContent = "Установка завершена";
+      installStatusElement.textContent = "Installation complete";
       updateProgress(event.totalSteps, event.totalSteps);
-      appendLog("Установка завершена");
+      appendLog("Installation complete.");
       setInstallRunning(false);
       activeRunId = null;
       break;
     case "run-cancelled":
-      installStatusElement.textContent = "Остановлено";
-      appendLog(event.message || "Установка остановлена", "warning");
+      installStatusElement.textContent = "Stopped";
+      appendLog(event.message || "Installation stopped.", "warning");
       setInstallRunning(false);
       activeRunId = null;
       break;
     case "run-failed":
-      installStatusElement.textContent = "Ошибка";
-      appendLog(event.message || "Установка завершилась с ошибкой", "error");
+      installStatusElement.textContent = "Error";
+      appendLog(event.message || "Installation failed.", "error");
       setInstallRunning(false);
       activeRunId = null;
       break;
@@ -255,16 +259,16 @@ function handleInstallEvent(event) {
   }
 }
 
-function handleOpenHandsEvent(event) {
-  if (activeOpenHandsRunId && event.runId !== activeOpenHandsRunId) return;
+function handleDevHubEvent(event) {
+  if (activeDevHubRunId && event.runId !== activeDevHubRunId) return;
 
   switch (event.type) {
     case "process-start":
-      installStatusElement.textContent = "OpenHands запущен";
+      installStatusElement.textContent = "DevAgent Hub running";
       appendLog(event.message);
       if (event.url) {
-        openHandsLinkElement.href = event.url;
-        openHandsLinkElement.classList.remove("hidden");
+        devHubLinkElement.href = event.url;
+        devHubLinkElement.classList.remove("hidden");
       }
       break;
     case "stdout":
@@ -274,16 +278,16 @@ function handleOpenHandsEvent(event) {
       appendLog(event.message.trimEnd(), "warning");
       break;
     case "process-error":
-      installStatusElement.textContent = "Ошибка OpenHands";
+      installStatusElement.textContent = "DevAgent Hub error";
       appendLog(event.message, "error");
-      setOpenHandsRunning(false);
-      activeOpenHandsRunId = null;
+      setDevHubRunning(false);
+      activeDevHubRunId = null;
       break;
     case "process-exit":
-      installStatusElement.textContent = "OpenHands остановлен";
+      installStatusElement.textContent = "DevAgent Hub stopped";
       appendLog(event.message);
-      setOpenHandsRunning(false);
-      activeOpenHandsRunId = null;
+      setDevHubRunning(false);
+      activeDevHubRunId = null;
       break;
     default:
       if (event.message) appendLog(event.message);
@@ -292,7 +296,7 @@ function handleOpenHandsEvent(event) {
 
 function resetInstallLog() {
   installPanelElement.classList.remove("hidden");
-  installStatusElement.textContent = "Запуск";
+  installStatusElement.textContent = "Starting";
   installLogElement.textContent = "";
   updateProgress(0, 1);
 }
@@ -316,9 +320,9 @@ function setInstallRunning(isRunning) {
   cancelInstallButton.disabled = !isRunning;
 }
 
-function setOpenHandsRunning(isRunning) {
-  startOpenHandsButton.disabled = isRunning;
-  stopOpenHandsButton.disabled = !isRunning;
+function setDevHubRunning(isRunning) {
+  startDevHubButton.disabled = isRunning;
+  stopDevHubButton.disabled = !isRunning;
 }
 
 function syncCloudBaseUrl() {

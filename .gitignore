@@ -5,6 +5,10 @@ build/
 .venv/
 venv/
 .tools/
+.agents/
+.devagent/
+.openhands/
+.claude/
 __pycache__/
 *.pyc
 .env
@@ -16,6 +20,14 @@ coverage/
 devagent-install-plan.json
 README_INSTALL.txt
 services/secrets.env
+services/start-devagent-hub.ps1
+services/start-openhands.ps1
+services/install-windows-task.ps1
+services/uninstall-windows-task.ps1
+services/devagent-hub.service
+services/install-linux-systemd.sh
+services/uninstall-linux-systemd.sh
+services/secrets.env.example
 installer/dist/
 vendor/
 du.exe.stackdump

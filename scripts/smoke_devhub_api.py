@@ -23,10 +23,12 @@ def main() -> int:
     port = int(os.getenv('DEVHUB_API_SMOKE_PORT', '8023'))
     temp_dir = Path(tempfile.mkdtemp(prefix='devhub-api-smoke-'))
     config_path = temp_dir / 'agents.json'
-    shutil.copyfile(ROOT_DIR / 'configs' / 'agents.json', config_path)
+    source_config = Path(os.getenv('AGENT_CONFIG_PATH', ROOT_DIR / 'configs' / 'agents.json'))
+    workspace_root = Path(os.getenv('DEVAGENT_WORKSPACE', ROOT_DIR)).resolve()
+    shutil.copyfile(source_config, config_path)
 
     os.environ['AGENT_CONFIG_PATH'] = str(config_path)
-    os.environ['DEVAGENT_WORKSPACE'] = str(ROOT_DIR)
+    os.environ['DEVAGENT_WORKSPACE'] = str(workspace_root)
 
     from app.main import app
 
@@ -47,10 +49,14 @@ def main() -> int:
         assert health['status'] == 'ok'
         assert len(config['models']) > 0
         assert len(config['agents']) > 0
-        assert workspace['rootPath'] == str(ROOT_DIR)
+        assert workspace['rootPath'] == str(workspace_root)
         assert 'git' in workspace
         assert 'openVsCode' in workspace
         assert 'github' in workspace
+
+        if os.getenv('SERVE_FRONTEND', '').lower() in {'1', 'true', 'yes'}:
+            html = get_text(opener, f'{base_url}/')
+            assert '<div id="root">' in html
 
         print('DevHub API smoke: OK')
         print(f"models={len(config['models'])}")
@@ -85,6 +91,15 @@ def get_json(
 ) -> dict[str, Any]:
     with opener.open(url, timeout=timeout) as response:
         return json.loads(response.read().decode('utf-8'))
+
+
+def get_text(
+    opener: urllib.request.OpenerDirector,
+    url: str,
+    timeout: float = 5,
+) -> str:
+    with opener.open(url, timeout=timeout) as response:
+        return response.read().decode('utf-8')
 
 
 if __name__ == '__main__':

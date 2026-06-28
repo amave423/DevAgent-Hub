@@ -12,7 +12,7 @@ fi
 
 INSTALL_DIR="${DEVAGENT_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
 SKIP_SYSTEM_PACKAGES=0
-SKIP_DOCKER=0
+SKIP_DOCKER=1
 SKIP_OLLAMA=0
 APT_UPDATED=0
 CLI_ARGS=()
@@ -58,6 +58,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-docker)
       SKIP_DOCKER=1
+      shift
+      ;;
+    --with-docker)
+      SKIP_DOCKER=0
       shift
       ;;
     --skip-ollama)
@@ -117,6 +121,7 @@ install_base_packages() {
 install_python312() {
   if command -v python3.12 >/dev/null 2>&1; then
     log "Python 3.12 is already installed"
+    apt_install python3.12-venv python3.12-dev
     return
   fi
 

@@ -20,6 +20,14 @@ async function main() {
         command: process.execPath,
         args: ["-e", "console.error('runner stderr ok')"],
       },
+      {
+        id: "optional-failure",
+        label: "optional failure",
+        cwd: process.cwd(),
+        command: process.execPath,
+        args: ["-e", "process.exit(17)"],
+        optional: true,
+      },
     ],
     env: process.env,
   });
@@ -30,6 +38,7 @@ async function main() {
   assert.equal(result.ok, true);
   assert.equal(events.some((event) => event.type === "run-start"), true);
   assert.equal(events.filter((event) => event.type === "step-complete").length, 2);
+  assert.equal(events.filter((event) => event.type === "step-warning").length, 1);
   assert.equal(events.some((event) => event.type === "stdout" && event.message.includes("runner stdout ok")), true);
   assert.equal(events.some((event) => event.type === "stderr" && event.message.includes("runner stderr ok")), true);
   assert.equal(events.at(-1).type, "run-complete");

@@ -7,6 +7,8 @@ const path = require("node:path");
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const DEFAULT_REPO_URL = "https://github.com/amave423/DevAgent-Hub.git";
 const DEFAULT_MODEL_ID = "ollama-qwen25-coder-7b";
+const DEFAULT_SERVICE_PORT = 3000;
+const CODE_SERVER_VERSION = "4.117.0";
 
 function getInstallerDefaults(isPackaged = false) {
   return {
@@ -19,17 +21,11 @@ function getInstallerDefaults(isPackaged = false) {
 }
 
 async function checkSystem() {
-  const [git, docker, node, npm, python] = await Promise.all([
+  const [git, node, npm, python, ollama, codeServer] = await Promise.all([
     checkTool({
       id: "git",
       label: "Git",
       candidates: [commandCandidate("git", ["--version"])],
-      required: true,
-    }),
-    checkTool({
-      id: "docker",
-      label: "Docker",
-      candidates: [commandCandidate("docker", ["--version"])],
       required: true,
     }),
     checkTool({
@@ -52,9 +48,24 @@ async function checkSystem() {
       minVersion: [3, 12, 0],
       required: true,
     }),
+    checkTool({
+      id: "ollama",
+      label: "Ollama",
+      candidates: [commandCandidate(platformCommand("ollama"), ["--version"])],
+      required: false,
+    }),
+    checkTool({
+      id: "code-server",
+      label: "Browser code editor",
+      candidates: [
+        commandCandidate("openvscode-server", ["--version"]),
+        commandCandidate(platformCommand("code-server"), ["--version"]),
+      ],
+      required: false,
+    }),
   ]);
 
-  return [git, docker, node, npm, python];
+  return [git, node, npm, python, ollama, codeServer];
 }
 
 async function prepareInstall(rawSettings) {
@@ -63,18 +74,17 @@ async function prepareInstall(rawSettings) {
   assertSafeInstallPath(settings.installPath);
   await fs.mkdir(settings.installPath, { recursive: true });
 
-  const configsDir = path.join(settings.installPath, "configs");
+  const runtimeConfigDir = path.join(settings.installPath, ".devagent");
   const serviceDir = path.join(settings.installPath, "services");
   const envPath = path.join(settings.installPath, ".env.local");
-  const configPath = path.join(configsDir, "agents.json");
+  const configPath = runtimeAgentsConfigPath(settings);
   const planPath = path.join(settings.installPath, "devagent-install-plan.json");
   const readmePath = path.join(settings.installPath, "README_INSTALL.txt");
 
-  await fs.mkdir(configsDir, { recursive: true });
+  await fs.mkdir(runtimeConfigDir, { recursive: true });
   await fs.mkdir(serviceDir, { recursive: true });
 
   const agentsConfig = await buildAgentsConfig(settings);
-  const envFile = buildEnvFile(settings, configPath);
   const commands = buildInstallCommands(settings);
   const serviceFiles = buildServiceFiles(settings);
   const warnings = await buildWarnings(settings);
@@ -94,6 +104,7 @@ async function prepareInstall(rawSettings) {
     runnerMode: settings.runnerMode,
     proxyConfigured: Boolean(settings.proxyUrl),
     cloudProvider: settings.cloudProvider,
+    serviceUrl: `http://127.0.0.1:${DEFAULT_SERVICE_PORT}`,
     files: generatedFiles,
     commands,
     serviceCommands: buildServiceCommands(settings),
@@ -101,7 +112,7 @@ async function prepareInstall(rawSettings) {
   };
 
   await fs.writeFile(configPath, `${JSON.stringify(agentsConfig, null, 2)}\n`, "utf8");
-  await fs.writeFile(envPath, envFile, "utf8");
+  await fs.writeFile(envPath, buildEnvFile(settings, configPath), "utf8");
   await fs.writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
   await fs.writeFile(readmePath, buildReadme(settings, commands), "utf8");
   await Promise.all(
@@ -125,21 +136,11 @@ async function prepareInstall(rawSettings) {
 
 function buildInstallExecutionSteps(rawSettings) {
   const settings = normalizeSettings(rawSettings);
-  const rootPython = process.platform === "win32"
-    ? path.join(settings.installPath, ".venv", "Scripts", "python.exe")
-    : path.join(settings.installPath, ".venv", "bin", "python");
-  const rootUv = process.platform === "win32"
-    ? path.join(settings.installPath, ".venv", "Scripts", "uv.exe")
-    : path.join(settings.installPath, ".venv", "bin", "uv");
-  const openHandsPython = process.platform === "win32"
-    ? path.join(settings.installPath, "vendor", "OpenHands", ".venv", "Scripts", "python.exe")
-    : path.join(settings.installPath, "vendor", "OpenHands", ".venv", "bin", "python");
-  const openHandsDir = path.join(settings.installPath, "vendor", "OpenHands");
-  const openHandsFrontendDir = path.join(openHandsDir, "frontend");
+  const python = projectPython(settings);
 
   return [
     {
-      id: "root-python-venv",
+      id: "python-venv",
       label: "Create Python 3.12 virtual environment",
       cwd: settings.installPath,
       command: process.platform === "win32" ? "py" : "python3.12",
@@ -148,63 +149,76 @@ function buildInstallExecutionSteps(rawSettings) {
         : ["-m", "venv", ".venv"],
     },
     {
-      id: "root-install-uv",
-      label: "Install uv",
+      id: "python-api-deps",
+      label: "Install API Python dependencies",
       cwd: settings.installPath,
-      command: rootPython,
-      args: ["-m", "pip", "install", "uv"],
+      command: python,
+      args: [
+        "-m",
+        "pip",
+        "install",
+        "-r",
+        path.join(settings.installPath, "services", "agent-api", "requirements.txt"),
+      ],
+      timeoutMs: 300000,
     },
     {
-      id: "openhands-uv-sync",
-      label: "Install OpenHands Python dependencies",
-      cwd: openHandsDir,
-      command: rootUv,
-      args: ["sync", "--frozen", "--no-dev", "--python", rootPython],
-    },
-    {
-      id: "openhands-frontend-install",
-      label: "Install OpenHands frontend dependencies",
-      cwd: openHandsFrontendDir,
+      id: "node-deps",
+      label: "Install Node.js dependencies",
+      cwd: settings.installPath,
       command: platformCommand("npm"),
       args: ["install"],
+      timeoutMs: 600000,
     },
     {
-      id: "openhands-frontend-build",
-      label: "Build OpenHands frontend",
-      cwd: openHandsFrontendDir,
+      id: "web-build",
+      label: "Build web UI",
+      cwd: settings.installPath,
       command: platformCommand("npm"),
-      args: ["run", "build"],
+      args: ["run", "build:web"],
+      timeoutMs: 300000,
+    },
+    {
+      id: "code-editor-install",
+      label: "Install browser code editor (optional)",
+      cwd: settings.installPath,
+      command: platformCommand("npm"),
+      args: [
+        "install",
+        "--prefix",
+        path.join(settings.installPath, ".tools", "code-server"),
+        `code-server@${CODE_SERVER_VERSION}`,
+      ],
+      optional: true,
+      timeoutMs: 900000,
     },
     ...buildOllamaPullSteps(settings),
     {
-      id: "agent-studio-smoke",
-      label: "Check Agent Studio API",
+      id: "api-smoke",
+      label: "Check DevAgent Hub API",
       cwd: settings.installPath,
-      command: openHandsPython,
-      args: [path.join(settings.installPath, "scripts", "smoke_agent_studio.py")],
-    },
-    {
-      id: "openhands-app-smoke",
-      label: "Check OpenHands app API",
-      cwd: settings.installPath,
-      command: openHandsPython,
-      args: [path.join(settings.installPath, "scripts", "smoke_openhands_app.py")],
-      env: {
-        OPENHANDS_APP_SMOKE_PYTHON: openHandsPython,
-      },
+      command: python,
+      args: [path.join(settings.installPath, "scripts", "smoke_devhub_api.py")],
+      env: runtimeEnv(settings),
+      timeoutMs: 180000,
     },
   ];
 }
 
 function buildProcessEnv(rawSettings) {
   const settings = normalizeSettings(rawSettings);
-  const env = {
+  return {
     ...process.env,
-    AGENT_STUDIO_CONFIG_PATH: path.join(settings.installPath, "configs", "agents.json"),
+    ...runtimeEnv(settings),
+  };
+}
+
+function runtimeEnv(settings) {
+  const env = {
+    AGENT_CONFIG_PATH: runtimeAgentsConfigPath(settings),
     AGENT_STUDIO_RUNNER_MODE: settings.runnerMode,
-    AGENT_STUDIO_APP_TITLE: "DevAgent Hub",
-    OPENHANDS_SUPPRESS_BANNER: "1",
-    OH_PERSISTENCE_DIR: path.join(settings.installPath, ".openhands"),
+    DEVAGENT_WORKSPACE: settings.installPath,
+    DEVAGENT_WEB_DIST: path.join(settings.installPath, "apps", "web", "dist"),
     OLLAMA_BASE_URL: "http://localhost:11434",
   };
 
@@ -214,11 +228,6 @@ function buildProcessEnv(rawSettings) {
     env.NO_PROXY = "localhost,127.0.0.1";
   }
 
-  const baseUrl = settings.cloudBaseUrl || providerBaseUrl(settings.cloudProvider);
-  if (baseUrl) {
-    env.OPENHANDS_PROVIDER_BASE_URL = baseUrl;
-  }
-
   if (settings.apiKey) {
     env[providerApiKeyName(settings.cloudProvider)] = settings.apiKey;
   }
@@ -226,29 +235,29 @@ function buildProcessEnv(rawSettings) {
   return env;
 }
 
-function buildOpenHandsLaunchStep(rawSettings, port = 3000) {
+function buildDevHubLaunchStep(rawSettings, port = DEFAULT_SERVICE_PORT) {
   const settings = normalizeSettings(rawSettings);
-  const openHandsDir = path.join(settings.installPath, "vendor", "OpenHands");
-  const python = process.platform === "win32"
-    ? path.join(openHandsDir, ".venv", "Scripts", "python.exe")
-    : path.join(openHandsDir, ".venv", "bin", "python");
 
   return {
-    id: "openhands-start",
-    label: "Запуск OpenHands",
-    cwd: openHandsDir,
-    command: python,
+    id: "devhub-start",
+    label: "Start DevAgent Hub",
+    cwd: settings.installPath,
+    command: projectPython(settings),
     args: [
       "-m",
       "uvicorn",
-      "openhands.app_server.app:app",
+      "app.main:app",
       "--app-dir",
-      ".",
+      path.join(settings.installPath, "services", "agent-api"),
       "--host",
       "127.0.0.1",
       "--port",
       String(port),
     ],
+    env: {
+      ...runtimeEnv(settings),
+      SERVE_FRONTEND: "true",
+    },
     url: `http://127.0.0.1:${port}`,
   };
 }
@@ -260,6 +269,8 @@ function commandCandidate(command, args) {
 function platformCommand(command) {
   if (process.platform !== "win32") return command;
   if (command === "npm") return "npm.cmd";
+  if (command === "ollama") return "ollama.exe";
+  if (command === "code-server") return "code-server.cmd";
   return command;
 }
 
@@ -299,7 +310,7 @@ async function checkTool({ id, label, candidates, minVersion, required }) {
         command: [candidate.command, ...candidate.args].join(" "),
         version: version ? version.join(".") : null,
         output: result.output,
-        problem: versionOk ? null : `Требуется версия ${minVersion.join(".")} или выше`,
+        problem: versionOk ? null : `Requires version ${minVersion.join(".")} or newer.`,
       };
     }
   }
@@ -313,7 +324,7 @@ async function checkTool({ id, label, candidates, minVersion, required }) {
     command: candidates.map((candidate) => candidate.command).join(" / "),
     version: null,
     output: lastResult?.output ?? "",
-    problem: "Не найдено в PATH",
+    problem: required ? "Not found in PATH." : "Optional tool is not installed.",
   };
 }
 
@@ -365,7 +376,7 @@ function normalizeSettings(rawSettings = {}) {
   const selectedModelIdsInput = parseModelIdList(
     rawSettings.selectedModelIds ?? rawSettings.modelIds ?? rawSettings.models,
   );
-  const requestedModelId = String(rawSettings.modelId || "").trim();
+  const requestedModelId = String(rawSettings.modelId || rawSettings.model || "").trim();
   const selectedModelIds = uniqueStrings([
     requestedModelId,
     ...selectedModelIdsInput,
@@ -428,7 +439,7 @@ function expandHome(value) {
 function assertSafeInstallPath(installPath) {
   const parsed = path.parse(installPath);
   if (installPath === parsed.root) {
-    throw new Error("Нельзя использовать корень диска как папку проекта");
+    throw new Error("Refusing to use a filesystem root as the project directory.");
   }
 }
 
@@ -437,7 +448,9 @@ async function buildAgentsConfig(settings) {
   const rawConfig = await fs.readFile(sourcePath, "utf8");
   const config = JSON.parse(rawConfig);
   const selectedModelIds = new Set(settings.selectedModelIds);
-  const selectedModels = config.models.filter((model) => selectedModelIds.has(model.id));
+  const selectedModels = config.models
+    .filter((model) => selectedModelIds.has(model.id))
+    .map((model) => applyCloudBaseUrl(model, settings));
 
   if (selectedModels.length === 0) {
     throw new Error(`Selected models were not found in the default config: ${settings.selectedModelIds.join(", ")}`);
@@ -460,16 +473,30 @@ async function buildAgentsConfig(settings) {
   return config;
 }
 
+function applyCloudBaseUrl(model, settings) {
+  if (
+    settings.cloudBaseUrl &&
+    model.kind === "cloud" &&
+    (settings.cloudProvider === "custom" || model.provider === settings.cloudProvider)
+  ) {
+    return {
+      ...model,
+      baseUrl: settings.cloudBaseUrl,
+    };
+  }
+
+  return model;
+}
+
 function buildEnvFile(settings, configPath) {
   const apiKeyName = providerApiKeyName(settings.cloudProvider);
-  const baseUrl = settings.cloudBaseUrl || providerBaseUrl(settings.cloudProvider);
+  const env = runtimeEnv(settings);
   const lines = [
     "# DevAgent Hub local runtime",
-    `AGENT_STUDIO_CONFIG_PATH=${quoteEnv(configPath)}`,
+    `AGENT_CONFIG_PATH=${quoteEnv(configPath)}`,
+    `DEVAGENT_WORKSPACE=${quoteEnv(env.DEVAGENT_WORKSPACE)}`,
+    `DEVAGENT_WEB_DIST=${quoteEnv(env.DEVAGENT_WEB_DIST)}`,
     `AGENT_STUDIO_RUNNER_MODE=${settings.runnerMode}`,
-    "AGENT_STUDIO_APP_TITLE=DevAgent Hub",
-    "OPENHANDS_SUPPRESS_BANNER=1",
-    `OH_PERSISTENCE_DIR=${quoteEnv(path.join(settings.installPath, ".openhands"))}`,
     "OLLAMA_BASE_URL=http://localhost:11434",
   ];
 
@@ -479,12 +506,8 @@ function buildEnvFile(settings, configPath) {
     lines.push("NO_PROXY=localhost,127.0.0.1");
   }
 
-  if (baseUrl) {
-    lines.push(`OPENHANDS_PROVIDER_BASE_URL=${baseUrl}`);
-  }
-
   lines.push("");
-  lines.push("# API keys are not stored here. Put terminal/service secrets in services/secrets.env.");
+  lines.push("# API keys are not stored here. Put service secrets in services/secrets.env.");
   lines.push(`# ${apiKeyName}=`);
 
   return `${lines.join("\n")}\n`;
@@ -509,54 +532,41 @@ function quoteEnv(value) {
 }
 
 function buildInstallCommands(settings) {
+  const modelPulls = selectedOllamaModelNames(settings).map((modelName) => `ollama pull ${modelName}`);
+  const editorInstall = `npm install --prefix "${path.join(settings.installPath, ".tools", "code-server")}" code-server@${CODE_SERVER_VERSION}`;
+
   if (process.platform === "win32") {
     return [
       `Set-Location "${settings.installPath}"`,
       "py -3.12 -m venv .venv",
-      ".venv\\Scripts\\python.exe -m pip install uv",
-      "Push-Location vendor\\OpenHands",
-      "..\\..\\.venv\\Scripts\\uv.exe sync --frozen --no-dev --python ..\\..\\.venv\\Scripts\\python.exe",
-      "Pop-Location",
-      "Push-Location vendor\\OpenHands\\frontend",
+      ".\\.venv\\Scripts\\python.exe -m pip install -r .\\services\\agent-api\\requirements.txt",
       "npm install",
-      "npm run build",
-      "Pop-Location",
-      ...selectedOllamaModelNames(settings).map((modelName) => `ollama pull ${modelName}`),
-      ".\\vendor\\OpenHands\\.venv\\Scripts\\python.exe scripts\\smoke_agent_studio.py",
-      ".\\vendor\\OpenHands\\.venv\\Scripts\\python.exe scripts\\smoke_openhands_app.py",
-      '$env:AGENT_STUDIO_CONFIG_PATH = "$PWD\\configs\\agents.json"',
-      '$env:OH_PERSISTENCE_DIR = "$PWD\\.openhands"',
-      "Push-Location vendor\\OpenHands",
-      ".\\.venv\\Scripts\\python.exe -m uvicorn openhands.app_server.app:app --app-dir . --host 127.0.0.1 --port 3000",
+      "npm run build:web",
+      editorInstall,
+      ...modelPulls,
+      ".\\.venv\\Scripts\\python.exe .\\scripts\\smoke_devhub_api.py",
+      ".\\services\\install-windows-task.ps1",
     ];
   }
 
   return [
     `cd "${settings.installPath}"`,
     "python3.12 -m venv .venv",
-    ".venv/bin/python -m pip install uv",
-    "cd vendor/OpenHands",
-    "../../.venv/bin/uv sync --frozen --no-dev --python ../../.venv/bin/python",
-    "cd ../..",
-    "cd vendor/OpenHands/frontend",
+    "./.venv/bin/python -m pip install -r ./services/agent-api/requirements.txt",
     "npm install",
-    "npm run build",
-    "cd ../../..",
-    ...selectedOllamaModelNames(settings).map((modelName) => `ollama pull ${modelName}`),
-    "./vendor/OpenHands/.venv/bin/python scripts/smoke_agent_studio.py",
-    "./vendor/OpenHands/.venv/bin/python scripts/smoke_openhands_app.py",
-    "export AGENT_STUDIO_CONFIG_PATH=\"$PWD/configs/agents.json\"",
-    "export OH_PERSISTENCE_DIR=\"$PWD/.openhands\"",
-    "cd vendor/OpenHands",
-    "./.venv/bin/python -m uvicorn openhands.app_server.app:app --app-dir . --host 127.0.0.1 --port 3000",
+    "npm run build:web",
+    editorInstall,
+    ...modelPulls,
+    "./.venv/bin/python ./scripts/smoke_devhub_api.py",
+    "./services/install-linux-systemd.sh",
   ];
 }
 
 function buildServiceFiles(settings) {
   const serviceDir = path.join(settings.installPath, "services");
-  const files = [
+  return [
     {
-      path: path.join(serviceDir, "start-openhands.ps1"),
+      path: path.join(serviceDir, "start-devagent-hub.ps1"),
       content: buildWindowsStartScript(settings),
     },
     {
@@ -586,8 +596,6 @@ function buildServiceFiles(settings) {
       content: buildSecretsExample(settings),
     },
   ];
-
-  return files;
 }
 
 function buildServiceCommands(settings) {
@@ -624,9 +632,12 @@ function buildWindowsStartScript(settings) {
     "Import-EnvFile $EnvFile",
     "Import-EnvFile $SecretsFile",
     "$env:SERVE_FRONTEND = 'true'",
-    "$Python = Join-Path $ProjectRoot 'vendor\\OpenHands\\.venv\\Scripts\\python.exe'",
-    "Set-Location (Join-Path $ProjectRoot 'vendor\\OpenHands')",
-    "& $Python -m uvicorn openhands.app_server.app:app --app-dir . --host 127.0.0.1 --port 3000",
+    "$env:DEVAGENT_WORKSPACE = \"$ProjectRoot\"",
+    "$env:DEVAGENT_WEB_DIST = Join-Path $ProjectRoot 'apps\\web\\dist'",
+    "$Python = Join-Path $ProjectRoot '.venv\\Scripts\\python.exe'",
+    "$ApiDir = Join-Path $ProjectRoot 'services\\agent-api'",
+    "Set-Location $ProjectRoot",
+    "& $Python -m uvicorn app.main:app --app-dir $ApiDir --host 127.0.0.1 --port 3000",
     "",
   ].join("\n");
 }
@@ -634,21 +645,21 @@ function buildWindowsStartScript(settings) {
 function buildWindowsTaskInstallScript() {
   return [
     "$ErrorActionPreference = 'Stop'",
-    "$TaskName = 'DevAgent Hub OpenHands'",
-    "$ScriptPath = Join-Path $PSScriptRoot 'start-openhands.ps1'",
+    "$TaskName = 'DevAgent Hub'",
+    "$ScriptPath = Join-Path $PSScriptRoot 'start-devagent-hub.ps1'",
     "$Action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument \"-NoProfile -ExecutionPolicy Bypass -File `\"$ScriptPath`\"\"",
     "$Trigger = New-ScheduledTaskTrigger -AtLogOn",
     "$Principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel LeastPrivilege",
     "Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Force | Out-Null",
     "Start-ScheduledTask -TaskName $TaskName",
-    "Write-Host 'DevAgent Hub scheduled task installed and started.'",
+    "Write-Host 'DevAgent Hub scheduled task installed and started at http://127.0.0.1:3000.'",
     "",
   ].join("\n");
 }
 
 function buildWindowsTaskUninstallScript() {
   return [
-    "$TaskName = 'DevAgent Hub OpenHands'",
+    "$TaskName = 'DevAgent Hub'",
     "if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {",
     "  Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue",
     "  Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false",
@@ -660,21 +671,23 @@ function buildWindowsTaskUninstallScript() {
 
 function buildSystemdUnit(settings) {
   const projectRoot = settings.installPath;
-  const openHandsDir = path.join(projectRoot, "vendor", "OpenHands");
-  const python = path.join(openHandsDir, ".venv", "bin", "python");
+  const python = path.join(projectRoot, ".venv", "bin", "python");
+  const apiDir = path.join(projectRoot, "services", "agent-api");
   return [
     "[Unit]",
-    "Description=DevAgent Hub OpenHands",
+    "Description=DevAgent Hub",
     "After=network-online.target",
     "Wants=network-online.target",
     "",
     "[Service]",
     "Type=simple",
-    `WorkingDirectory=${systemdEscape(openHandsDir)}`,
+    `WorkingDirectory=${systemdEscape(projectRoot)}`,
     `EnvironmentFile=-${systemdEscape(path.join(projectRoot, ".env.local"))}`,
     `EnvironmentFile=-${systemdEscape(path.join(projectRoot, "services", "secrets.env"))}`,
     "Environment=SERVE_FRONTEND=true",
-    `ExecStart=${systemdEscape(python)} -m uvicorn openhands.app_server.app:app --app-dir . --host 127.0.0.1 --port 3000`,
+    systemdEnvironment("DEVAGENT_WORKSPACE", projectRoot),
+    systemdEnvironment("DEVAGENT_WEB_DIST", path.join(projectRoot, "apps", "web", "dist")),
+    `ExecStart=${systemdEscape(python)} -m uvicorn app.main:app --app-dir ${systemdEscape(apiDir)} --host 127.0.0.1 --port 3000`,
     "Restart=on-failure",
     "RestartSec=5",
     "",
@@ -725,16 +738,11 @@ function buildSecretsExample(settings) {
 async function buildWarnings(settings) {
   const warnings = [];
   const packagePath = path.join(settings.installPath, "package.json");
-  const vendorPath = path.join(settings.installPath, "vendor", "OpenHands", "pyproject.toml");
 
   if (!(await pathExists(packagePath))) {
     warnings.push(
-      `В выбранной папке нет package.json. Сначала клонируйте репозиторий: git clone ${settings.repoUrl} "${settings.installPath}"`,
+      `No package.json was found in the selected path. The installer will clone ${settings.repoUrl} first.`,
     );
-  }
-
-  if (!(await pathExists(vendorPath))) {
-    warnings.push("В выбранной папке не найден vendor/OpenHands. Проверьте, что форк скачан полностью.");
   }
 
   if (
@@ -745,6 +753,13 @@ async function buildWarnings(settings) {
     warnings.push("Live mode with cloud models requires an API key in services/secrets.env or the process environment.");
   }
 
+  if (settings.pullLocalModels && selectedOllamaModelNames(settings).length > 0) {
+    const ollama = await runCommand(platformCommand("ollama"), ["--version"]);
+    if (ollama.error) {
+      warnings.push("Ollama is not available in PATH. Local model pull will be skipped as a non-fatal installer step.");
+    }
+  }
+
   return warnings;
 }
 
@@ -753,10 +768,12 @@ function buildOllamaPullSteps(settings) {
 
   return selectedOllamaModelNames(settings).map((modelName) => ({
     id: `ollama-pull-${modelName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`,
-    label: `Pull Ollama model ${modelName}`,
+    label: `Pull Ollama model ${modelName} (optional)`,
     cwd: settings.installPath,
     command: platformCommand("ollama"),
     args: ["pull", modelName],
+    optional: true,
+    timeoutMs: 1800000,
   }));
 }
 
@@ -799,10 +816,24 @@ async function resolveDefaultAgentsConfigPath() {
   throw new Error("Default agents config was not found.");
 }
 
+function runtimeAgentsConfigPath(settings) {
+  return path.join(settings.installPath, ".devagent", "agents.json");
+}
+
+function projectPython(settings) {
+  return process.platform === "win32"
+    ? path.join(settings.installPath, ".venv", "Scripts", "python.exe")
+    : path.join(settings.installPath, ".venv", "bin", "python");
+}
+
 function systemdEscape(value) {
   const text = String(value);
   if (!/[\s"'\\]/.test(text)) return text;
   return `"${text.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
+function systemdEnvironment(name, value) {
+  return `Environment=${name}=${systemdEscape(value)}`;
 }
 
 function buildReadme(settings, commands) {
@@ -815,6 +846,7 @@ function buildReadme(settings, commands) {
     `Default model: ${settings.modelId}`,
     `Enabled models: ${settings.selectedModelIds.join(", ")}`,
     `Runner mode: ${settings.runnerMode}`,
+    `Web UI: http://127.0.0.1:${DEFAULT_SERVICE_PORT}`,
     "",
     "Run from terminal:",
     ...commands.map((command) => `  ${command}`),
@@ -828,8 +860,8 @@ function buildReadme(settings, commands) {
 }
 
 module.exports = {
+  buildDevHubLaunchStep,
   buildInstallExecutionSteps,
-  buildOpenHandsLaunchStep,
   buildProcessEnv,
   checkSystem,
   getInstallerDefaults,
