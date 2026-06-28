@@ -18,3 +18,4 @@ README_INSTALL.txt
 services/secrets.env
 installer/dist/
 vendor/
+du.exe.stackdump
