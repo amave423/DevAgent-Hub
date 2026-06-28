@@ -2,7 +2,7 @@
   "name": "ai-agent-studio",
   "version": "0.1.0",
   "private": true,
-  "description": "Custom OpenHands-based interface layer for managing multi-agent workflows.",
+  "description": "DevAgent Hub — standalone multi-agent development workspace with OpenVSCode Server, GitHub automation and custom AI agent chains.",
   "workspaces": [
     "apps/web",
     "installer"
@@ -18,14 +18,12 @@
     "dist:installer:win": "npm --workspace installer run dist:win",
     "dist:installer:linux": "npm --workspace installer run dist:linux",
     "install:cli": "node installer/cli.js",
-    "start:api": "uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --app-dir services/agent-api",
+    "start:api": "uvicorn app.main:app --reload --reload-exclude=.tools/* --host 0.0.0.0 --port 8000 --app-dir services/agent-api",
     "typecheck": "npm --workspace apps/web run typecheck",
-    "smoke:devhub-api": "node scripts/run_python_script.js scripts/smoke_devhub_api.py",
-    "smoke:agent-studio": "node scripts/run_python_script.js scripts/smoke_agent_studio.py",
-    "smoke:openhands-app": "node scripts/run_python_script.js scripts/smoke_openhands_app.py",
+    "smoke:api": "node scripts/run_python_script.js scripts/smoke_devhub_api.py",
     "smoke:installer": "node scripts\\smoke_installer_prepare.js && node scripts\\smoke_installer_runner.js",
     "smoke:installer-runner": "node scripts\\smoke_installer_runner.js",
-    "verify": "npm run check:installer && npm run smoke:installer && npm run typecheck && npm run smoke:devhub-api && npm run smoke:agent-studio && npm run smoke:openhands-app"
+    "verify": "npm run check:installer && npm run smoke:installer && npm run typecheck && npm run smoke:api"
   },
   "engines": {
     "node": ">=22.12"

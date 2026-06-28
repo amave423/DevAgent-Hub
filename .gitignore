@@ -4,7 +4,7 @@ build/
 .vite/
 .venv/
 venv/
-.openhands/
+.tools/
 __pycache__/
 *.pyc
 .env
@@ -17,3 +17,4 @@ devagent-install-plan.json
 README_INSTALL.txt
 services/secrets.env
 installer/dist/
+vendor/

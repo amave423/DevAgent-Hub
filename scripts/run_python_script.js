@@ -11,18 +11,45 @@ if (!scriptPath) {
   process.exit(2);
 }
 
-const candidates = [
+// Probe every candidate and keep the first one importing httpx (or any stdlib module).
+function probePython(command, args) {
+  try {
+    const result = require("child_process").execFileSync(
+      command,
+      [...args, "-c", "import sys, importlib.util; sys.exit(0 if importlib.util.find_spec('httpx') else 1)"],
+      { stdio: "ignore", windowsHide: true },
+    );
+    return true;
+  } catch {
+    // execFileSync throws on ENOENT or non-zero exit code
+    return false;
+  }
+}
+
+// Build candidate list ordered by preference
+const rawCandidates = [
   process.env.DEVAGENT_PYTHON ? [process.env.DEVAGENT_PYTHON] : null,
-  process.env.OPENHANDS_APP_SMOKE_PYTHON ? [process.env.OPENHANDS_APP_SMOKE_PYTHON] : null,
-  [path.join(ROOT_DIR, "vendor", "OpenHands", ".venv", "Scripts", "python.exe")],
-  [path.join(ROOT_DIR, "vendor", "OpenHands", ".venv", "bin", "python")],
   [path.join(ROOT_DIR, ".venv", "Scripts", "python.exe")],
   [path.join(ROOT_DIR, ".venv", "bin", "python")],
-  process.platform === "win32" ? ["py", "-3.12"] : null,
   ["python3.12"],
   ["python3"],
   ["python"],
 ].filter(Boolean);
+
+// Pick the first candidate that has httpx available
+let chosen = null;
+for (const candidate of rawCandidates) {
+  const [cmd, ...args] = candidate;
+  if (cmd.includes("/") || cmd.includes("\\") || path.isAbsolute(cmd)) {
+    if (!fs.existsSync(cmd)) continue;
+  }
+  if (probePython(cmd, args)) {
+    chosen = candidate;
+    break;
+  }
+}
+
+const candidates = chosen ? [chosen] : rawCandidates;
 
 for (const candidate of candidates) {
   const [command] = candidate;

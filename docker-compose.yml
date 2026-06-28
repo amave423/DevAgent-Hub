@@ -4,8 +4,10 @@ services:
       context: ./services/agent-api
     environment:
       AGENT_CONFIG_PATH: /app/configs/agents.json
+      DEVAGENT_WORKSPACE: /workspace
     volumes:
       - ./configs:/app/configs
+      - agent-workspace:/workspace
     ports:
       - "8000:8000"
 
@@ -22,3 +24,5 @@ services:
     depends_on:
       - agent-api
 
+volumes:
+  agent-workspace:
