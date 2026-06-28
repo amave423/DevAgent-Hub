@@ -62,7 +62,7 @@ export function AgentPanel({ agents, models, activeAgentId, onCreate, onEdit, on
                 </label>
                 <div className="agent-copy">
                   <strong>{agent.name}</strong>
-                  <small>{model?.name ?? "model not set"}</small>
+	                  <small>{model?.name ?? "модель не выбрана"}</small>
                 </div>
               </div>
               <select
@@ -102,4 +102,3 @@ export function AgentPanel({ agents, models, activeAgentId, onCreate, onEdit, on
     </aside>
   );
 }
-

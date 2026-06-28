@@ -28,7 +28,7 @@ export function CodePanel({
     <div className="tab-panel full-bleed-panel">
       <PanelHeader
         title={t("codeTitle")}
-        subtitle={workspaceStatus?.openVsCode.message || "Browser VS Code powered by OpenVSCode Server."}
+        subtitle={workspaceStatus?.openVsCode.message || t("codeSubtitle")}
         action={
           <div className="inline-actions">
             {effectiveUrl && (

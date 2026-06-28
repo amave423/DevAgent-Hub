@@ -32,7 +32,7 @@ export function SettingsPanel({
 
   return (
     <div className="tab-panel settings-panel">
-      <PanelHeader title={t("settingsTitle")} subtitle="Configure models, integrations and automation behavior." />
+      <PanelHeader title={t("settingsTitle")} subtitle={t("settingsSubtitle")} />
       <div className="settings-sections">
         <section>
           <h3>{t("modelPurposes")}</h3>
@@ -63,7 +63,7 @@ export function SettingsPanel({
           <h3>{t("runtime")}</h3>
           <div className="settings-grid">
             <label className="field">
-              <span>Runner mode</span>
+	              <span>{t("runnerMode")}</span>
               <select
                 value={config.runtime.runnerMode}
                 onChange={(event) =>
@@ -79,11 +79,11 @@ export function SettingsPanel({
               </select>
             </label>
             <label className="field">
-              <span>OpenVSCode URL</span>
+	              <span>{t("openVsCodeUrl")}</span>
               <input value={settings.openVsCodeUrl} onChange={(event) => patchSettings({ openVsCodeUrl: event.target.value })} placeholder="http://127.0.0.1:3001" />
             </label>
             <label className="field">
-              <span>Preview URL</span>
+	              <span>{t("previewUrl")}</span>
               <input value={settings.previewUrl} onChange={(event) => patchSettings({ previewUrl: event.target.value })} />
             </label>
           </div>
@@ -94,18 +94,18 @@ export function SettingsPanel({
           <div className="guardrail-grid">
             <article>
               <ShieldCheck size={20} />
-              <strong>Scoped git writes</strong>
-              <span>Require agents to list files before commit.</span>
+	              <strong>{t("scopedGitWrites")}</strong>
+	              <span>{t("scopedGitWritesDesc")}</span>
             </article>
             <article>
               <TestTube2 size={20} />
-              <strong>Verify before PR</strong>
-              <span>Run configured smoke checks before pushing.</span>
+	              <strong>{t("verifyBeforePr")}</strong>
+	              <span>{t("verifyBeforePrDesc")}</span>
             </article>
             <article>
               <Cpu size={20} />
-              <strong>Model routing</strong>
-              <span>Use cheaper models for planning, stronger models for review.</span>
+	              <strong>{t("modelRouting")}</strong>
+	              <span>{t("modelRoutingDesc")}</span>
             </article>
           </div>
         </section>

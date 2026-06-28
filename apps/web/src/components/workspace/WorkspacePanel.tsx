@@ -43,11 +43,11 @@ export function WorkspacePanel({ result, logs }: WorkspacePanelProps) {
         {activeTab === "chat" && (
           <div className="chat-output">
             <article className="message user-message">
-              <strong>Task</strong>
+              <strong>Задача</strong>
               <p>Запуск идет через выбранную цепочку агентов и сохраняет логи в правой панели.</p>
             </article>
             <article className="message assistant-message">
-              <strong>Result</strong>
+              <strong>Результат</strong>
               <p>{result ?? "Финальный результат появится после завершения текущей задачи."}</p>
             </article>
           </div>
@@ -66,7 +66,7 @@ export function WorkspacePanel({ result, logs }: WorkspacePanelProps) {
           <textarea
             className="code-editor"
             spellCheck={false}
-            defaultValue={`export const chain = ["Generator", "Critic", "Optimizer", "Tester", "Finalizer"];\n\n// Browser editor is provided by OpenVSCode/code-server.`}
+            defaultValue={`export const chain = ["Generator", "Critic", "Optimizer", "Tester", "Finalizer"];\n\n// Браузерный редактор предоставляет OpenVSCode/code-server.`}
           />
         )}
 

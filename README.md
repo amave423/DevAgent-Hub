@@ -17,48 +17,36 @@ IDE-панель с мультиагентной цепочкой (Generator, Cr
 
 ## Требования
 
-- **Node.js 22.12+** — для фронтенда
-- **Python 3.12+** — для бэкенда
-- **Git** — для workspace-операций
+- **Windows 10+**: можно запускать `install.ps1`, он сам подготовит Git/Python/Node/Ollama.
+- **Ubuntu 22.04/24.04**: можно запускать `install.sh`, он сам подготовит системные зависимости.
+- **Node.js 22.12+**, **Python 3.12+**, **Git** нужны только для ручного dev-запуска без bootstrap-установщика.
 - **Docker** (опционально) — для контейнерного запуска
 
-## Быстрый старт (Windows PowerShell)
+## Установка (Windows 10 PowerShell)
 
 ```powershell
-# 1. Установить Node-зависимости
-npm install
-
-# 2. Установить Python-зависимости бэкенда
-pip install -r services/agent-api/requirements.txt
-
-# 3. Запустить бэкенд (в отдельном терминале)
-npm run start:api
-
-# 4. Запустить фронтенд (в отдельном терминале)
-npm run dev:web
-
-# 5. Открыть в браузере
-Start-Process http://127.0.0.1:5173
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\install.ps1
 ```
 
-## Быстрый старт (Linux/macOS)
+После установки UI доступен на `http://127.0.0.1:3000`.
+
+## Установка (Ubuntu 22.04/24.04)
 
 ```bash
-# 1. Установить Node-зависимости
+chmod +x ./install.sh
+./install.sh
+```
+
+## Dev-запуск вручную
+
+```powershell
 npm install
-
-# 2. Установить Python-зависимости бэкенда
-pip install -r services/agent-api/requirements.txt
-
-# 3. Запустить бэкенд (в отдельном терминале)
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r services\agent-api\requirements.txt
 npm run start:api
-
-# 4. Запустить фронтенд (в отдельном терминале)
 npm run dev:web
-
-# 5. Открыть в браузере
-xdg-open http://127.0.0.1:5173   # Linux
-open http://127.0.0.1:5173       # macOS
+Start-Process http://127.0.0.1:5173
 ```
 
 ## Docker-запуск

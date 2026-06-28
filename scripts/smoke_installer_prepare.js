@@ -18,11 +18,19 @@ async function main() {
       installPath,
       repoUrl: "https://github.com/amave423/DevAgent-Hub.git",
       modelId: "openrouter-auto",
-      selectedModelIds: ["openrouter-auto", "openai-gpt-4o-mini"],
+      selectedModelIds: ["ollama-qwen25-coder-7b", "openrouter-auto", "openai-gpt-4o-mini"],
+      agentModelAssignments: {
+        generator: "ollama-qwen25-coder-7b",
+        critic: "openrouter-auto",
+        finalizer: "openai-gpt-4o-mini",
+      },
       runnerMode: "mock",
       proxyUrl: "http://127.0.0.1:7890",
       cloudProvider: "openrouter",
-      apiKey: "test-key",
+      apiKeys: {
+        openrouter: "test-openrouter-key",
+        openai: "test-openai-key",
+      },
     });
 
     const configPath = path.join(installPath, ".devagent", "agents.json");
@@ -35,7 +43,10 @@ async function main() {
     const env = buildProcessEnv({
       installPath,
       cloudProvider: "openrouter",
-      apiKey: "test-key",
+      apiKeys: {
+        openrouter: "test-openrouter-key",
+        openai: "test-openai-key",
+      },
     });
     const installSteps = buildInstallExecutionSteps({
       installPath,
@@ -48,17 +59,22 @@ async function main() {
 
     assert.equal(result.ok, true);
     assert.equal(config.runtime.runnerMode, "mock");
-    assert.equal(config.agents.every((agent) => agent.modelId === "openrouter-auto"), true);
-    assert.deepEqual(config.models.map((model) => model.id), ["openrouter-auto", "openai-gpt-4o-mini"]);
-    assert.doesNotMatch(envFile, /test-key/);
+    assert.equal(config.agents.find((agent) => agent.id === "generator").modelId, "ollama-qwen25-coder-7b");
+    assert.equal(config.agents.find((agent) => agent.id === "critic").modelId, "openrouter-auto");
+    assert.equal(config.agents.find((agent) => agent.id === "finalizer").modelId, "openai-gpt-4o-mini");
+    assert.deepEqual(config.models.map((model) => model.id), ["ollama-qwen25-coder-7b", "openrouter-auto", "openai-gpt-4o-mini"]);
+    assert.doesNotMatch(envFile, /test-openrouter-key/);
+    assert.doesNotMatch(envFile, /test-openai-key/);
     assert.match(envFile, /AGENT_CONFIG_PATH=/);
     assert.match(envFile, /\.devagent[\\/]+agents\.json/);
     assert.match(envFile, /HTTP_PROXY=http:\/\/127\.0\.0\.1:7890/);
     assert.equal(plan.modelId, "openrouter-auto");
-    assert.deepEqual(plan.selectedModelIds, ["openrouter-auto", "openai-gpt-4o-mini"]);
+    assert.deepEqual(plan.selectedModelIds, ["openrouter-auto", "ollama-qwen25-coder-7b", "openai-gpt-4o-mini"]);
+    assert.equal(plan.agentModelAssignments.critic, "openrouter-auto");
     assert.equal(Array.isArray(plan.commands), true);
     assert.equal(Array.isArray(plan.serviceCommands), true);
-    assert.equal(env.AGENT_STUDIO_OPENROUTER_API_KEY, "test-key");
+    assert.equal(env.AGENT_STUDIO_OPENROUTER_API_KEY, "test-openrouter-key");
+    assert.equal(env.AGENT_STUDIO_OPENAI_API_KEY, "test-openai-key");
     assert.equal(env.AGENT_CONFIG_PATH.endsWith(path.join(".devagent", "agents.json")), true);
     assert.equal(launchStep.url, "http://127.0.0.1:3000");
     assert.equal(launchStep.args.includes("app.main:app"), true);

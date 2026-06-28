@@ -87,10 +87,10 @@ export function GithubPanel({
         </label>
       </div>
       <div className="github-status-grid">
-        <Metric label={t("workspace")} value={workspaceStatus?.rootPath ?? "unknown"} />
-        <Metric label={t("branch")} value={workspaceStatus?.git.branch ?? "not a repo"} />
-        <Metric label={t("changedFiles")} value={String(changedFiles.length)} />
-        <Metric label={t("token")} value={workspaceStatus?.github.tokenConfigured ? "configured" : "missing"} />
+	        <Metric label={t("workspace")} value={workspaceStatus?.rootPath ?? t("unknown")} />
+	        <Metric label={t("branch")} value={workspaceStatus?.git.branch ?? t("notRepo")} />
+	        <Metric label={t("changedFiles")} value={String(changedFiles.length)} />
+	        <Metric label={t("token")} value={workspaceStatus?.github.tokenConfigured ? t("configured") : t("missing")} />
       </div>
       {workspaceStatus?.git.changes.length ? (
         <div className="change-list">
@@ -103,7 +103,7 @@ export function GithubPanel({
         <article>
           <Github size={18} />
           <strong>{t("createRepo")}</strong>
-          <p>Uses GITHUB_TOKEN or GH_TOKEN and creates the repository through GitHub API.</p>
+	          <p>{t("githubCreateRepoDesc")}</p>
           <button
             className="secondary-button"
             disabled={isBusy || !workspaceStatus?.github.tokenConfigured || !repoName.trim()}
@@ -126,7 +126,7 @@ export function GithubPanel({
         <article>
           <FileCode2 size={18} />
           <strong>{t("commitChanges")}</strong>
-          <p>Stages only changed files reported by git status, then creates a commit.</p>
+	          <p>{t("githubCommitDesc")}</p>
           <button
             className="secondary-button"
             disabled={isBusy || changedFiles.length === 0 || !commitMessage.trim()}
@@ -147,7 +147,7 @@ export function GithubPanel({
         <article>
           <Github size={18} />
           <strong>{t("pushBranch")}</strong>
-          <p>Pushes the current branch to origin and sets upstream on first push.</p>
+	          <p>{t("githubPushDesc")}</p>
           <button
             className="secondary-button"
             disabled={isBusy || !workspaceStatus?.git.isRepository || !workspaceStatus.git.branch}
@@ -168,7 +168,7 @@ export function GithubPanel({
         <article>
           <ShieldCheck size={18} />
           <strong>{t("pullRequest")}</strong>
-          <p>Create a pull request on GitHub using your token.</p>
+	          <p>{t("githubPrDesc")}</p>
         </article>
       </div>
 
@@ -190,7 +190,7 @@ export function GithubPanel({
         </div>
         <label className="field">
           <span>{t("prBody")}</span>
-          <textarea value={prBody} onChange={(event) => setPrBody(event.target.value)} rows={3} placeholder="Describe your changes..." />
+	          <textarea value={prBody} onChange={(event) => setPrBody(event.target.value)} rows={3} placeholder={t("describeChanges")} />
         </label>
         <button
           className="secondary-button"

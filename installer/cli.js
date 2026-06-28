@@ -25,9 +25,10 @@ async function main() {
     return;
   }
 
-  const modelOptions = await loadModelOptions();
+  const defaultConfig = await loadDefaultConfig();
+  const modelOptions = defaultConfig.models;
   const interactive = process.stdin.isTTY && !args.yes && !args.nonInteractive;
-  const rawSettings = await collectSettings(args, modelOptions, interactive);
+  const rawSettings = await collectSettings(args, modelOptions, defaultConfig.agents, interactive);
   const settings = normalizeSettings(rawSettings);
   const shouldRunInstall = !args.prepareOnly && !args.skipInstall;
   const shouldStartService = shouldRunInstall && !args.skipService && rawSettings.startService !== false;
@@ -59,16 +60,22 @@ async function main() {
   console.log(`Install path: ${settings.installPath}`);
 }
 
-async function collectSettings(args, modelOptions, interactive) {
+async function collectSettings(args, modelOptions, agentOptions, interactive) {
   const defaults = getInstallerDefaults(false);
   const base = {
     installPath: args.installPath || defaults.installPath,
     repoUrl: args.repoUrl || defaults.repoUrl,
     selectedModelIds: parseList(args.models || args.selectedModelIds),
     modelId: args.modelId || args.model,
+    agentModelAssignments: parseAgentAssignments(args.agentModels || args.agentModelAssignments),
     runnerMode: args.runnerMode || "auto",
     proxyUrl: args.proxyUrl || args.proxy || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || "",
     apiKey: args.apiKey || "",
+    apiKeys: {
+      openrouter: args.openrouterApiKey || "",
+      openai: args.openaiApiKey || "",
+      custom: args.customApiKey || "",
+    },
     cloudProvider: args.cloudProvider || "openrouter",
     cloudBaseUrl: args.cloudBaseUrl || "",
     pullLocalModels: args.noModelPull ? false : args.pullLocalModels,
@@ -96,15 +103,21 @@ async function collectSettings(args, modelOptions, interactive) {
     base.runnerMode = await promptChoice(rl, "Runner mode", ["auto", "live", "mock"], base.runnerMode);
     base.proxyUrl = await question(rl, "Proxy URL (empty if none)", base.proxyUrl);
 
-    if (selectedModels.some((model) => model.kind === "cloud")) {
-      base.cloudProvider = await promptChoice(
-        rl,
-        "Cloud API key provider",
-        ["openrouter", "openai", "custom"],
-        base.cloudProvider,
-      );
-      base.cloudBaseUrl = await question(rl, "Custom/cloud base URL (empty for provider default)", base.cloudBaseUrl);
-      base.apiKey = await question(rl, "Cloud API key (empty to skip)", base.apiKey);
+    const cloudProviders = selectedCloudProviders(selectedModels);
+    if (cloudProviders.length > 0) {
+      console.log("\nCloud model providers:");
+      for (const provider of cloudProviders) {
+        const argKey = `${provider}ApiKey`;
+        const current = base.apiKeys[provider] || args[argKey] || "";
+        base.apiKeys[provider] = await question(rl, `${provider} API key (empty to skip)`, current);
+      }
+      base.cloudProvider = cloudProviders[0] || base.cloudProvider;
+      base.cloudBaseUrl = await question(rl, "Custom cloud base URL (empty for provider default)", base.cloudBaseUrl);
+    }
+
+    const customizeAgents = await yesNo(rl, "Choose model for each agent", true);
+    if (customizeAgents) {
+      base.agentModelAssignments = await promptAgentModels(rl, agentOptions, selectedModels, base.modelId);
     }
 
     if (selectedModels.some((model) => model.provider === "ollama")) {
@@ -118,6 +131,34 @@ async function collectSettings(args, modelOptions, interactive) {
   } finally {
     rl.close();
   }
+}
+
+async function promptAgentModels(rl, agents, selectedModels, defaultModelId) {
+  const assignments = {};
+  console.log("\nPer-agent model assignment:");
+  agents
+    .slice()
+    .sort((left, right) => left.order - right.order)
+    .forEach((agent, index) => {
+      console.log(`  ${index + 1}. ${agent.name} (${agent.id})`);
+    });
+
+  for (const agent of agents.slice().sort((left, right) => left.order - right.order)) {
+    const defaultIndex = Math.max(
+      selectedModels.findIndex((model) => model.id === (assignments[agent.id] || defaultModelId)),
+      0,
+    ) + 1;
+    for (;;) {
+      const answer = await question(rl, `${agent.name} model number or id`, String(defaultIndex));
+      const selected = parseModelSelection(answer, selectedModels);
+      if (selected.length > 0) {
+        assignments[agent.id] = selected[0].id;
+        break;
+      }
+      console.log("No valid model selected.");
+    }
+  }
+  return assignments;
 }
 
 async function promptModels(rl, modelOptions, selectedIds) {
@@ -208,6 +249,19 @@ function parseModelSelection(value, modelOptions) {
   return selected;
 }
 
+function selectedCloudProviders(models) {
+  return [...new Set(models.filter((model) => model.kind === "cloud").map((model) => model.provider))];
+}
+
+function parseAgentAssignments(value) {
+  const assignments = {};
+  for (const item of parseList(value)) {
+    const [agentId, modelId] = item.split("=", 2).map((part) => part?.trim());
+    if (agentId && modelId) assignments[agentId] = modelId;
+  }
+  return assignments;
+}
+
 function parseList(value) {
   if (Array.isArray(value)) return value.flatMap(parseList);
   if (!value) return [];
@@ -217,10 +271,9 @@ function parseList(value) {
     .filter(Boolean);
 }
 
-async function loadModelOptions() {
+async function loadDefaultConfig() {
   const configPath = path.join(PROJECT_ROOT, "configs", "agents.json");
-  const payload = JSON.parse(await fs.readFile(configPath, "utf8"));
-  return payload.models;
+  return JSON.parse(await fs.readFile(configPath, "utf8"));
 }
 
 async function ensureRepository(settings) {
@@ -244,10 +297,16 @@ async function ensureRepository(settings) {
 }
 
 async function writeSecretsEnv(settings) {
-  if (!settings.apiKey) return;
+  const entries = Object.entries(settings.apiKeys || {})
+    .filter(([, value]) => String(value || "").trim())
+    .map(([provider, value]) => `${providerApiKeyName(provider)}=${value}`);
+  if (settings.apiKey) {
+    entries.push(`${providerApiKeyName(settings.cloudProvider)}=${settings.apiKey}`);
+  }
+  if (entries.length === 0) return;
 
   const secretsPath = path.join(settings.installPath, "services", "secrets.env");
-  const content = `${providerApiKeyName(settings.cloudProvider)}=${settings.apiKey}\n`;
+  const content = `${[...new Set(entries)].join("\n")}\n`;
   await fs.writeFile(secretsPath, content, "utf8");
 
   if (process.platform !== "win32") {
@@ -400,11 +459,14 @@ Options:
   --repo-url <url>               Git repository URL.
   --models <ids>                 Comma-separated model ids to expose in UI.
   --model <id>                   Default model assigned to all agents.
+  --agent-models <pairs>          Comma-separated agent=model pairs.
   --runner-mode <auto|live|mock> Agent runner mode.
   --proxy <url>                  HTTP/HTTPS proxy URL.
   --cloud-provider <provider>    openrouter, openai, or custom.
   --cloud-base-url <url>         Custom OpenAI-compatible base URL.
   --api-key <key>                Key written to services/secrets.env.
+  --openrouter-api-key <key>      OpenRouter key written to services/secrets.env.
+  --openai-api-key <key>          OpenAI key written to services/secrets.env.
   --prepare-only                 Generate config and service files only.
   --skip-install                 Do not run dependency/build/smoke steps.
   --skip-service                 Do not install/start background service.

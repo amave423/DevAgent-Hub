@@ -36,15 +36,15 @@ import type { WorkbenchTab } from "./types";
 import type { CopyKey } from "./i18n/ru";
 import { normalizeAgentOrder } from "./utils";
 
-const tabs: Array<{ id: WorkbenchTab; icon: ReactNode; label: string }> = [
-  { id: "chat", icon: <MessageSquareText size={18} />, label: "Chat" },
-  { id: "agents", icon: <BrainCircuit size={18} />, label: "Agents" },
-  { id: "code", icon: <Code2 size={18} />, label: "Code" },
-  { id: "terminal", icon: <TerminalSquare size={18} />, label: "Terminal" },
-  { id: "preview", icon: <Globe2 size={18} />, label: "Preview" },
-  { id: "github", icon: <Activity size={18} />, label: "GitHub" },
-  { id: "logs", icon: <Activity size={18} />, label: "Logs" },
-  { id: "settings", icon: <Settings2 size={18} />, label: "Settings" },
+const tabs: Array<{ id: WorkbenchTab; icon: ReactNode; labelKey: CopyKey }> = [
+  { id: "chat", icon: <MessageSquareText size={18} />, labelKey: "tabChat" },
+  { id: "agents", icon: <BrainCircuit size={18} />, labelKey: "tabAgents" },
+  { id: "code", icon: <Code2 size={18} />, labelKey: "tabCode" },
+  { id: "terminal", icon: <TerminalSquare size={18} />, labelKey: "tabTerminal" },
+  { id: "preview", icon: <Globe2 size={18} />, labelKey: "tabPreview" },
+  { id: "github", icon: <Activity size={18} />, labelKey: "tabGithub" },
+  { id: "logs", icon: <Activity size={18} />, labelKey: "tabLogs" },
+  { id: "settings", icon: <Settings2 size={18} />, labelKey: "tabSettings" },
 ];
 
 export function App() {
@@ -133,7 +133,7 @@ export function App() {
               key={tab.id}
               className={activeTab === tab.id ? "active" : ""}
               onClick={() => setActiveTab(tab.id)}
-              title={tab.label}
+              title={t(tab.labelKey)}
             >
               {tab.icon}
             </button>
@@ -147,7 +147,7 @@ export function App() {
             <LayoutDashboard size={24} />
             <div>
               <h1>DevAgent Hub</h1>
-              <span>Autonomous AI development workspace</span>
+              <span>{t("productSubtitle")}</span>
             </div>
           </div>
 
@@ -160,7 +160,7 @@ export function App() {
           <div className="topbar-actions">
             <button
               className="icon-button"
-              title="Language"
+              title={language === "ru" ? "Язык" : "Language"}
               onClick={() => patchSettings({ language: language === "ru" ? "en" : "ru" })}
             >
               <Languages size={18} />
@@ -280,16 +280,16 @@ function RunSummary({
     <section className="rail-card">
       <div className="section-heading compact">
         <div>
-          <h3>Run</h3>
+	          <h3>{t("runSummary")}</h3>
           <span>{taskState?.taskId ? taskState.taskId.slice(0, 8) : t("ready")}</span>
         </div>
         <Activity size={18} />
       </div>
       <ProgressBar value={taskState?.progress ?? 0} />
       <div className="metrics-grid">
-        <Metric label="Status" value={taskState?.status ?? t("ready")} />
-        <Metric label="Agents" value={String(enabledAgents.length)} />
-        <Metric label="Events" value={String(logs.length)} />
+	        <Metric label={t("status")} value={taskState?.status ?? t("ready")} />
+	        <Metric label={t("agentsTitle")} value={String(enabledAgents.length)} />
+	        <Metric label={t("events")} value={String(logs.length)} />
       </div>
     </section>
   );

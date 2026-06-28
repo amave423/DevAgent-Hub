@@ -21,31 +21,31 @@ import type {
 const SETTINGS_KEY = "devagent-hub.settings.v1";
 
 const purposeDefinitions: Array<Omit<ModelPurpose, "modelId">> = [
-  {
-    id: "planning",
-    label: "Planning",
-    description: "Task decomposition, architecture decisions and run plans.",
-  },
-  {
-    id: "coding",
-    label: "Coding",
-    description: "Main implementation, refactors and code generation.",
-  },
-  {
-    id: "review",
-    label: "Review",
-    description: "Critique, risk checks, security and quality review.",
-  },
-  {
-    id: "testing",
-    label: "Testing",
-    description: "Test plans, smoke checks, regression analysis.",
-  },
-  {
-    id: "final",
-    label: "Final",
-    description: "Final answer, patch summary and release notes.",
-  },
+	  {
+	    id: "planning",
+	    label: "Планирование",
+	    description: "Декомпозиция задач, архитектурные решения и планы запуска.",
+	  },
+	  {
+	    id: "coding",
+	    label: "Код",
+	    description: "Основная реализация, рефакторинг и генерация кода.",
+	  },
+	  {
+	    id: "review",
+	    label: "Ревью",
+	    description: "Критика, риски, безопасность и проверка качества.",
+	  },
+	  {
+	    id: "testing",
+	    label: "Тестирование",
+	    description: "Планы тестов, smoke-проверки и анализ регрессий.",
+	  },
+	  {
+	    id: "final",
+	    label: "Финал",
+	    description: "Итоговый ответ, описание патча и release notes.",
+	  },
 ];
 
 const agentPurposeMap: Record<string, ModelPurposeId> = {
@@ -116,7 +116,7 @@ export function useAgents() {
       setConfig(saved);
       window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Failed to save settings.");
+      setError(caught instanceof Error ? caught.message : "Не удалось сохранить настройки.");
     } finally {
       setIsSaving(false);
     }
@@ -160,7 +160,7 @@ export function useAgents() {
         },
       });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Failed to run agent chain.");
+      setError(caught instanceof Error ? caught.message : "Не удалось запустить цепочку агентов.");
       setIsRunning(false);
     }
   }
@@ -171,7 +171,7 @@ export function useAgents() {
       await cancelTask(taskState.taskId);
       setIsRunning(false);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Failed to cancel task.");
+      setError(caught instanceof Error ? caught.message : "Не удалось отменить задачу.");
     }
   }
 

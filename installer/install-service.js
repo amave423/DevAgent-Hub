@@ -101,6 +101,7 @@ async function prepareInstall(rawSettings) {
     repoUrl: settings.repoUrl,
     modelId: settings.modelId,
     selectedModelIds: settings.selectedModelIds,
+    agentModelAssignments: settings.agentModelAssignments,
     runnerMode: settings.runnerMode,
     proxyConfigured: Boolean(settings.proxyUrl),
     cloudProvider: settings.cloudProvider,
@@ -230,6 +231,11 @@ function runtimeEnv(settings) {
 
   if (settings.apiKey) {
     env[providerApiKeyName(settings.cloudProvider)] = settings.apiKey;
+  }
+  for (const [provider, apiKey] of Object.entries(settings.apiKeys || {})) {
+    if (apiKey) {
+      env[providerApiKeyName(provider)] = apiKey;
+    }
   }
 
   return env;
@@ -376,10 +382,14 @@ function normalizeSettings(rawSettings = {}) {
   const selectedModelIdsInput = parseModelIdList(
     rawSettings.selectedModelIds ?? rawSettings.modelIds ?? rawSettings.models,
   );
+  const agentModelAssignments = normalizeAgentAssignments(
+    rawSettings.agentModelAssignments ?? rawSettings.agentModels,
+  );
   const requestedModelId = String(rawSettings.modelId || rawSettings.model || "").trim();
   const selectedModelIds = uniqueStrings([
     requestedModelId,
     ...selectedModelIdsInput,
+    ...Object.values(agentModelAssignments),
   ]).filter(Boolean);
 
   if (selectedModelIds.length === 0) {
@@ -398,6 +408,8 @@ function normalizeSettings(rawSettings = {}) {
     runnerMode,
     proxyUrl: String(rawSettings.proxyUrl || "").trim(),
     apiKey: String(rawSettings.apiKey || "").trim(),
+    apiKeys: normalizeApiKeys(rawSettings),
+    agentModelAssignments,
     cloudProvider,
     cloudBaseUrl: String(rawSettings.cloudBaseUrl || "").trim(),
     pullLocalModels: rawSettings.pullLocalModels !== false && rawSettings.pullLocalModels !== "false",
@@ -422,6 +434,35 @@ function parseModelIdList(value) {
     .split(/[,\s]+/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function normalizeAgentAssignments(value) {
+  if (!value) return {};
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .map(([agentId, modelId]) => [String(agentId).trim(), String(modelId || "").trim()])
+        .filter(([agentId, modelId]) => agentId && modelId),
+    );
+  }
+
+  const assignments = {};
+  for (const item of parseModelIdList(value)) {
+    const [agentId, modelId] = item.split("=", 2).map((part) => part?.trim());
+    if (agentId && modelId) assignments[agentId] = modelId;
+  }
+  return assignments;
+}
+
+function normalizeApiKeys(rawSettings) {
+  const fromObject = rawSettings.apiKeys && typeof rawSettings.apiKeys === "object"
+    ? rawSettings.apiKeys
+    : {};
+  return {
+    openrouter: String(rawSettings.openrouterApiKey || fromObject.openrouter || "").trim(),
+    openai: String(rawSettings.openaiApiKey || fromObject.openai || "").trim(),
+    custom: String(rawSettings.customApiKey || fromObject.custom || "").trim(),
+  };
 }
 
 function uniqueStrings(values) {
@@ -461,10 +502,13 @@ async function buildAgentsConfig(settings) {
     : selectedModels[0].id;
 
   config.models = selectedModels;
-  config.agents = config.agents.map((agent) => ({
-    ...agent,
-    modelId: defaultModelId,
-  }));
+  config.agents = config.agents.map((agent) => {
+    const assignedModelId = settings.agentModelAssignments[agent.id];
+    return {
+      ...agent,
+      modelId: selectedModelIds.has(assignedModelId) ? assignedModelId : defaultModelId,
+    };
+  });
   config.runtime = {
     ...config.runtime,
     runnerMode: settings.runnerMode,
@@ -489,7 +533,6 @@ function applyCloudBaseUrl(model, settings) {
 }
 
 function buildEnvFile(settings, configPath) {
-  const apiKeyName = providerApiKeyName(settings.cloudProvider);
   const env = runtimeEnv(settings);
   const lines = [
     "# DevAgent Hub local runtime",
@@ -508,7 +551,9 @@ function buildEnvFile(settings, configPath) {
 
   lines.push("");
   lines.push("# API keys are not stored here. Put service secrets in services/secrets.env.");
-  lines.push(`# ${apiKeyName}=`);
+  for (const provider of selectedCloudProviders(settings)) {
+    lines.push(`# ${providerApiKeyName(provider)}=`);
+  }
 
   return `${lines.join("\n")}\n`;
 }
@@ -523,6 +568,20 @@ function providerBaseUrl(provider) {
   if (provider === "openai") return "https://api.openai.com/v1";
   if (provider === "openrouter") return "https://openrouter.ai/api/v1";
   return "";
+}
+
+function selectedCloudProviders(settings) {
+  const providers = [];
+  if (settings.selectedModelIds.some((modelId) => modelId.startsWith("openrouter-"))) {
+    providers.push("openrouter");
+  }
+  if (settings.selectedModelIds.some((modelId) => modelId.startsWith("openai-"))) {
+    providers.push("openai");
+  }
+  if (settings.cloudProvider === "custom") {
+    providers.push("custom");
+  }
+  return uniqueStrings(providers);
 }
 
 function quoteEnv(value) {
@@ -747,8 +806,8 @@ async function buildWarnings(settings) {
 
   if (
     settings.runnerMode === "live" &&
-    !settings.apiKey &&
-    settings.selectedModelIds.some((modelId) => modelId.startsWith("open"))
+    settings.selectedModelIds.some((modelId) => modelId.startsWith("open")) &&
+    !hasAnyCloudApiKey(settings)
   ) {
     warnings.push("Live mode with cloud models requires an API key in services/secrets.env or the process environment.");
   }
@@ -790,6 +849,11 @@ function selectedOllamaModelNames(settings) {
       .map((modelId) => known[modelId])
       .filter(Boolean),
   );
+}
+
+function hasAnyCloudApiKey(settings) {
+  if (settings.apiKey) return true;
+  return Object.values(settings.apiKeys || {}).some((apiKey) => Boolean(apiKey));
 }
 
 async function pathExists(targetPath) {
@@ -836,6 +900,12 @@ function systemdEnvironment(name, value) {
   return `Environment=${name}=${systemdEscape(value)}`;
 }
 
+function formatAgentAssignments(assignments) {
+  const entries = Object.entries(assignments || {});
+  if (entries.length === 0) return "all agents use default model";
+  return entries.map(([agentId, modelId]) => `${agentId}=${modelId}`).join(", ");
+}
+
 function buildReadme(settings, commands) {
   const serviceCommands = buildServiceCommands(settings);
   return [
@@ -845,6 +915,7 @@ function buildReadme(settings, commands) {
     `Repository: ${settings.repoUrl}`,
     `Default model: ${settings.modelId}`,
     `Enabled models: ${settings.selectedModelIds.join(", ")}`,
+    `Per-agent models: ${formatAgentAssignments(settings.agentModelAssignments)}`,
     `Runner mode: ${settings.runnerMode}`,
     `Web UI: http://127.0.0.1:${DEFAULT_SERVICE_PORT}`,
     "",

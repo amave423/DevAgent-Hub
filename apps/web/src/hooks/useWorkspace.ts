@@ -18,37 +18,40 @@ export function useWorkspace(settings: DevHubSettings | null) {
   const effectiveOpenVsCodeUrl = settings?.openVsCodeUrl || workspaceStatus?.openVsCode.url || "";
 
   const integrationStatuses = useMemo<IntegrationStatus[]>(
-    () => [
-      {
-        id: "openvscode",
-        label: "OpenVSCode Server",
-        status: effectiveOpenVsCodeUrl ? "connected" : workspaceStatus?.openVsCode.configured ? "planned" : "not_configured",
-        detail: workspaceStatus?.openVsCode.message || effectiveOpenVsCodeUrl || "Not configured.",
-      },
-      {
-        id: "github",
-        label: "GitHub automation",
-        status: workspaceStatus?.github.tokenConfigured ? "connected" : settings?.githubOwner ? "planned" : "not_configured",
-        detail: workspaceStatus?.github.tokenConfigured
-          ? workspaceStatus.github.repository
-            ? `Repository: ${workspaceStatus.github.repository}`
-            : "GITHUB_TOKEN is configured."
-          : workspaceStatus?.github.message || "Set GITHUB_TOKEN or GH_TOKEN to enable automation.",
-      },
-      {
-        id: "terminal",
-        label: "Runtime terminal",
-        status: "connected",
-        detail: "Terminal is available via WebSocket PTY.",
-      },
-    ],
+    () => {
+      const ru = settings?.language !== "en";
+      return [
+        {
+          id: "openvscode",
+          label: "OpenVSCode Server",
+          status: effectiveOpenVsCodeUrl ? "connected" : workspaceStatus?.openVsCode.configured ? "planned" : "not_configured",
+          detail: workspaceStatus?.openVsCode.message || effectiveOpenVsCodeUrl || (ru ? "Не настроено." : "Not configured."),
+        },
+        {
+          id: "github",
+          label: ru ? "GitHub-автоматизация" : "GitHub automation",
+          status: workspaceStatus?.github.tokenConfigured ? "connected" : settings?.githubOwner ? "planned" : "not_configured",
+          detail: workspaceStatus?.github.tokenConfigured
+            ? workspaceStatus.github.repository
+              ? `${ru ? "Репозиторий" : "Repository"}: ${workspaceStatus.github.repository}`
+              : "GITHUB_TOKEN is configured."
+            : workspaceStatus?.github.message || (ru ? "Укажи GITHUB_TOKEN или GH_TOKEN для автоматизации." : "Set GITHUB_TOKEN or GH_TOKEN to enable automation."),
+        },
+        {
+          id: "terminal",
+          label: ru ? "Терминал окружения" : "Runtime terminal",
+          status: "connected",
+          detail: ru ? "Терминал доступен через WebSocket PTY." : "Terminal is available via WebSocket PTY.",
+        },
+      ];
+    },
     [effectiveOpenVsCodeUrl, settings, workspaceStatus],
   );
 
   useEffect(() => {
     getWorkspaceStatus()
       .then(setWorkspaceStatus)
-      .catch((caught) => setWorkspaceNotice(caught instanceof Error ? caught.message : "Workspace unavailable."));
+      .catch((caught) => setWorkspaceNotice(caught instanceof Error ? caught.message : "Рабочая папка недоступна."));
   }, []);
 
   const refreshWorkspace = useCallback(async () => {
@@ -57,7 +60,7 @@ export function useWorkspace(settings: DevHubSettings | null) {
       setWorkspaceStatus(next);
       setWorkspaceNotice(next.git.message);
     } catch (caught) {
-      setWorkspaceNotice(caught instanceof Error ? caught.message : "Failed to refresh workspace.");
+      setWorkspaceNotice(caught instanceof Error ? caught.message : "Не удалось обновить рабочую папку.");
     }
   }, []);
 
@@ -75,7 +78,7 @@ export function useWorkspace(settings: DevHubSettings | null) {
       }
       setWorkspaceNotice(next.openVsCode.message);
     } catch (caught) {
-      setWorkspaceNotice(caught instanceof Error ? caught.message : "Failed to start OpenVSCode Server.");
+      setWorkspaceNotice(caught instanceof Error ? caught.message : "Не удалось запустить OpenVSCode Server.");
     } finally {
       setIsStartingEditor(false);
     }
@@ -89,7 +92,7 @@ export function useWorkspace(settings: DevHubSettings | null) {
       setWorkspaceStatus(next);
       setWorkspaceNotice(next.openVsCode.message);
     } catch (caught) {
-      setWorkspaceNotice(caught instanceof Error ? caught.message : "Failed to stop OpenVSCode Server.");
+      setWorkspaceNotice(caught instanceof Error ? caught.message : "Не удалось остановить OpenVSCode Server.");
     } finally {
       setIsStartingEditor(false);
     }
@@ -103,7 +106,7 @@ export function useWorkspace(settings: DevHubSettings | null) {
       setWorkspaceNotice(result.message);
       await refreshWorkspace();
     } catch (caught) {
-      setWorkspaceNotice(caught instanceof Error ? caught.message : "Failed to install OpenVSCode Server.");
+      setWorkspaceNotice(caught instanceof Error ? caught.message : "Не удалось установить OpenVSCode Server.");
     } finally {
       setIsStartingEditor(false);
     }
@@ -118,7 +121,7 @@ export function useWorkspace(settings: DevHubSettings | null) {
     } catch (caught) {
       const response: WorkspaceActionResponse = {
         ok: false,
-        message: caught instanceof Error ? caught.message : "Workspace action failed.",
+        message: caught instanceof Error ? caught.message : "Действие с рабочей папкой не выполнено.",
         output: "",
       };
       setWorkspaceNotice(response.message);

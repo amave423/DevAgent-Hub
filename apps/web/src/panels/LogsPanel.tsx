@@ -15,7 +15,7 @@ export function LogsPanel({
 }) {
   return (
     <div className="tab-panel">
-      <PanelHeader title={t("logsTitle")} subtitle={taskState?.taskId ? `Task ${taskState.taskId.slice(0, 8)}` : "No active task"} />
+      <PanelHeader title={t("logsTitle")} subtitle={taskState?.taskId ? `${t("taskLabel")} ${taskState.taskId.slice(0, 8)}` : t("noActiveTask")} />
       <div className="log-list">
         {logs.length === 0 && (
           <EmptyToolState icon={<Activity size={28} />} title={t("noLogs")} message={t("noLogsHint")} />

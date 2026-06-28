@@ -22,7 +22,7 @@ export function PreviewPanel({
           <ExternalLink size={16} />
         </a>
       </div>
-      <iframe className="tool-frame" title="Preview" src={settings.previewUrl} sandbox="allow-scripts allow-same-origin allow-forms" />
+      <iframe className="tool-frame" title={t("previewTitle")} src={settings.previewUrl} sandbox="allow-scripts allow-same-origin allow-forms" />
     </div>
   );
 }

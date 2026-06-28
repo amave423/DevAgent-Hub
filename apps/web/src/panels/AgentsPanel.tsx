@@ -32,14 +32,14 @@ export function AgentsPanel({
   function addAgent() {
     onChange([
       ...agents,
-      {
-        id: `agent-${Date.now()}`,
-        name: "New Agent",
-        enabled: true,
-        order: agents.length + 1,
-        modelId: config.models[0]?.id ?? "",
-        systemPrompt: "Define this agent role and its quality criteria.",
-      },
+	        {
+	          id: `agent-${Date.now()}`,
+	        name: t("newAgentName"),
+	          enabled: true,
+	          order: agents.length + 1,
+	          modelId: config.models[0]?.id ?? "",
+	        systemPrompt: t("newAgentPrompt"),
+	      },
     ]);
   }
 
@@ -48,7 +48,7 @@ export function AgentsPanel({
       <div className="section-heading">
         <div>
           <h2>{t("agentsTitle")}</h2>
-          <span>Configure order, role prompts and per-agent models.</span>
+	          <span>{t("agentsSubtitle")}</span>
         </div>
         <button className="secondary-button" onClick={addAgent}>
           <BrainCircuit size={16} />
@@ -71,7 +71,7 @@ export function AgentsPanel({
                 </label>
                 <div>
                   <input value={agent.name} onChange={(event) => patchAgent(agent.id, { name: event.target.value })} />
-                  <small>{model?.name ?? "model not set"}</small>
+	                  <small>{model?.name ?? t("modelNotSet")}</small>
                 </div>
               </header>
               <select value={agent.modelId} onChange={(event) => patchAgent(agent.id, { modelId: event.target.value })}>
