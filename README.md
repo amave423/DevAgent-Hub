@@ -1,202 +1,181 @@
 # DevAgent Hub
 
-Custom OpenHands fork layer for managing multi-agent workflows. The project includes:
+Собственный веб-интерфейс для управления AI-агентами и рабочим окружением разработки.
 
-- OpenHands fork under `vendor/OpenHands` with Agent Studio API and settings UI.
-- Multi-agent chain: Generator, Critic, Optimizer, Tester, Finalizer.
-- Live/mock runner modes for Ollama, OpenAI-compatible providers, OpenRouter and custom endpoints.
-- Terminal installer for Linux servers, plus an optional Electron launcher for desktop/dev use.
-- Smoke tests for the isolated Agent Studio router, full OpenHands app, and installer workflow.
+IDE-панель с мультиагентной цепочкой (Generator, Critic, Optimizer, Tester, Finalizer), встроенным редактором кода через OpenVSCode Server, терминалом xterm.js, preview, GitHub-автоматизацией, потоковыми логами и настройками моделей.
 
-## Repository
+## Ключевые возможности
 
-GitHub: https://github.com/amave423/DevAgent-Hub
+- **Chat** — постановка задач мультиагентной цепочке с визуализацией прогресса каждого агента
+- **Agents** — настройка цепочки: порядок, системные промпты, модель для каждого агента
+- **Code** — OpenVSCode Server (установка/запуск/остановка через бэкенд, iframe-встраивание)
+- **Terminal** — полноценный xterm.js-терминал через WebSocket PTY
+- **Preview** — встроенный просмотр локальных веб-приложений
+- **GitHub** — создание репозиториев, коммиты, пуши, pull request через API
+- **Logs** — потоковые логи выполнения агентов в реальном времени
+- **Settings** — выбор языка RU/EN, назначения моделей по задачам, runner mode, URL интеграций
 
-## Requirements
+## Требования
 
-- Node.js 22.12+ for OpenHands frontend builds
-- Python 3.12 recommended
-- Git
-- Docker for full OpenHands sandbox runtime
-- Windows: Python Launcher `py` is supported and preferred by installer scripts
+- **Node.js 22.12+** — для фронтенда
+- **Python 3.12+** — для бэкенда
+- **Git** — для workspace-операций
+- **Docker** (опционально) — для контейнерного запуска
 
-## Fast Checks
-
-```powershell
-npm run verify
-```
-
-This runs installer syntax checks, installer smoke, root web typecheck, isolated Agent Studio API smoke, and full OpenHands app smoke.
-
-Individual checks:
+## Быстрый старт (Windows PowerShell)
 
 ```powershell
-npm run check:installer
-npm run smoke:installer
-npm run typecheck
-npm run smoke:agent-studio
-npm run smoke:openhands-app
+# 1. Установить Node-зависимости
+npm install
+
+# 2. Установить Python-зависимости бэкенда
+pip install -r services/agent-api/requirements.txt
+
+# 3. Запустить бэкенд (в отдельном терминале)
+npm run start:api
+
+# 4. Запустить фронтенд (в отдельном терминале)
+npm run dev:web
+
+# 5. Открыть в браузере
+Start-Process http://127.0.0.1:5173
 ```
 
-## Primary Server Install
-
-Ubuntu/Debian server path:
+## Быстрый старт (Linux/macOS)
 
 ```bash
-git clone https://github.com/amave423/DevAgent-Hub.git
-cd DevAgent-Hub
-./install.sh
+# 1. Установить Node-зависимости
+npm install
+
+# 2. Установить Python-зависимости бэкенда
+pip install -r services/agent-api/requirements.txt
+
+# 3. Запустить бэкенд (в отдельном терминале)
+npm run start:api
+
+# 4. Запустить фронтенд (в отдельном терминале)
+npm run dev:web
+
+# 5. Открыть в браузере
+xdg-open http://127.0.0.1:5173   # Linux
+open http://127.0.0.1:5173       # macOS
 ```
 
-One-command bootstrap from an empty server:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/amave423/DevAgent-Hub/main/install.sh | bash
-```
-
-The terminal installer installs/checks Git, Python 3.12, Node.js 22.x, Docker and Ollama, clones the repository when needed, asks which models to enable, writes `configs/agents.json`, installs OpenHands dependencies, builds the OpenHands frontend, pulls selected Ollama models, runs smoke checks, and starts the background service.
-
-Useful non-interactive example:
-
-```bash
-./install.sh --yes --models ollama-qwen25-coder-7b --model ollama-qwen25-coder-7b
-```
-
-Cloud example:
-
-```bash
-./install.sh --models openrouter-auto --model openrouter-auto --runner-mode live --cloud-provider openrouter --api-key "$OPENROUTER_API_KEY"
-```
-
-Only selected models are written to `configs/agents.json`, so the web UI shows that selected set rather than the full built-in catalog.
-
-## Optional Desktop Installer
-
-Development mode:
+## Docker-запуск
 
 ```powershell
-npm run dev:installer
+docker-compose up --build
 ```
 
-Build unpacked Electron app:
+Фронтенд будет доступен на `http://localhost:5173`, API на `http://localhost:8000`.
+
+## Проверки
 
 ```powershell
-npm run build:installer
+npm run typecheck        # TypeScript проверка
+npm run build:web        # Production сборка
+npm run verify           # Все проверки (installer + typecheck + API smoke)
+npm run smoke:api        # Бэкенд smoke-тест
 ```
 
-Build distributables:
+## Архитектура
 
-```powershell
-npm run dist:installer:win
-npm run dist:installer:linux
+```
+apps/web/                    Фронтенд (React + TypeScript + Vite)
+  src/
+    App.tsx                  Главный layout, sidebar, маршрутизация по вкладкам
+    i18n/                    Локализация RU/EN
+    hooks/                   React-хуки (useAgents, useWorkspace)
+    panels/                  8 панелей (Chat, Agents, Code, Terminal, Preview, GitHub, Logs, Settings)
+    components/              UI-компоненты (Terminal, StatusPill, ProgressBar, ...)
+    api/                     API-клиенты (agents, workspace, terminal)
+    types.ts                 Общие типы данных
+    styles.css               Глобальные стили
+
+services/agent-api/          Бэкенд (FastAPI + Python 3.12)
+  app/
+    main.py                  Все HTTP и WebSocket endpoints
+    models.py                Pydantic-модели запросов/ответов
+    config_store.py          Чтение/запись configs/agents.json
+    llm.py                   Единый интерфейс LLM (Ollama, OpenAI, OpenRouter, Mock)
+    task_runner.py           Мультиагентная цепочка с реальными LLM-вызовами
+    terminal.py              PTY-терминал через WebSocket
+    workspace_service.py     Git, OpenVSCode, GitHub API
+  requirements.txt           Python-зависимости
+
+configs/agents.json          Конфигурация моделей и агентов
+installer/                   Terminal-first CLI + опциональный Electron-лаунчер
+scripts/                     Smoke-тесты и утилиты
 ```
 
-Artifacts are written to `installer/dist/` and are intentionally ignored by git.
+## API Endpoints
 
-The Electron launcher can:
+| Endpoint | Метод | Описание |
+|---|---|---|
+| `/health` | GET | Проверка здоровья |
+| `/api/agents/config` | GET | Получить конфигурацию агентов |
+| `/api/agents/config` | POST | Сохранить конфигурацию |
+| `/api/agents/run` | POST | Запустить цепочку агентов |
+| `/api/agents/status/{id}` | GET | Статус задачи |
+| `/api/agents/cancel/{id}` | POST | Отменить задачу |
+| `/api/agents/logs/{id}` | GET | SSE-поток логов |
+| `/api/terminal/ws` | WebSocket | PTY-терминал |
+| `/api/workspace/status` | GET | Статус workspace |
+| `/api/workspace/files` | GET | Список файлов |
+| `/api/workspace/files/content` | GET | Содержимое файла |
+| `/api/workspace/openvscode/start` | POST | Запустить OpenVSCode |
+| `/api/workspace/openvscode/stop` | POST | Остановить OpenVSCode |
+| `/api/workspace/openvscode/install` | POST | Установить OpenVSCode |
+| `/api/workspace/git/remote` | POST | Настроить remote |
+| `/api/workspace/git/commit` | POST | Создать коммит |
+| `/api/workspace/git/push` | POST | Запушить ветку |
+| `/api/workspace/github/repos` | POST | Создать репозиторий |
+| `/api/workspace/github/pull-request` | POST | Создать PR |
 
-- check Git, Docker, Node.js, npm and Python;
-- generate `configs/agents.json`, `.env.local`, install plan and service files;
-- run dependency installation/build/smoke commands with live logs;
-- stop an active installation run;
-- launch/stop OpenHands at `http://127.0.0.1:3000`;
-- store cloud API keys through Electron `safeStorage` when OS encryption is available.
+## Переменные окружения
 
-Electron is not required for Ubuntu Server installation. API keys are not written to `.env.local`. For terminal/headless service mode, the CLI writes `services/secrets.env` when `--api-key` is provided, or you can copy `services/secrets.env.example` manually.
-
-## Background Services
-
-Installer preparation generates service assets in `<install path>/services`.
-
-Windows scheduled task:
-
-```powershell
-Set-Location "<install path>\services"
-.\install-windows-task.ps1
-.\uninstall-windows-task.ps1
-```
-
-Linux user systemd service:
-
-```bash
-cd "<install path>/services"
-./install-linux-systemd.sh
-./uninstall-linux-systemd.sh
-```
-
-The background service starts the OpenHands app on `127.0.0.1:3000` and reads `.env.local` plus optional `services/secrets.env`.
-
-## OpenHands Agent Studio
-
-The integrated backend lives in:
-
-```text
-vendor/OpenHands/openhands/app_server/agent_studio/
-```
-
-Routes are mounted under:
-
-```text
-/api/v1/agents/config
-/api/v1/agents/run
-/api/v1/agents/status/{task_id}
-/api/v1/agents/cancel/{task_id}
-/api/v1/agents/logs/{task_id}
-```
-
-The frontend settings screen is:
-
-```text
-vendor/OpenHands/frontend/src/routes/multi-agent-settings.tsx
-```
-
-It supports enabling/disabling agents, editing prompts, selecting among the models enabled during installation, moving agents by buttons or drag-and-drop, test runs, live logs, progress, and cancellation.
+| Переменная | Описание |
+|---|---|
+| `AGENT_CONFIG_PATH` | Путь к agents.json (default: `configs/agents.json`) |
+| `DEVAGENT_WORKSPACE` | Корневая папка workspace (default: корень репозитория) |
+| `GITHUB_TOKEN` / `GH_TOKEN` | Токен GitHub для автоматизации |
+| `OPENVSCODE_URL` | URL внешнего OpenVSCode Server |
+| `OPENVSCODE_COMMAND` | Команда для запуска OpenVSCode Server |
+| `AGENT_STUDIO_API_KEY` | API-ключ для OpenAI/OpenRouter |
+| `AGENT_STUDIO_OPENAI_API_KEY` | Отдельный ключ для OpenAI |
+| `AGENT_STUDIO_OPENROUTER_API_KEY` | Отдельный ключ для OpenRouter |
+| `OLLAMA_BASE_URL` | URL Ollama (default: `http://localhost:11434`) |
+| `DEVAGENT_ALLOW_EXTERNAL_WORKSPACE` | `1` чтобы разрешить workspace вне корня |
 
 ## Runtime Modes
 
-Agent Studio supports:
+- `auto` — пробовать реальные вызовы, fallback на mock при ошибках
+- `live` — только реальные вызовы моделей
+- `mock` — детерминированная симуляция
 
-- `auto`: try live model calls and fall back to mock on missing credentials/local model errors.
-- `live`: require a live provider call.
-- `mock`: deterministic simulated execution.
-
-Set via UI or environment:
+Устанавливается через UI (Settings → Runtime) или env:
 
 ```powershell
 $env:AGENT_STUDIO_RUNNER_MODE = "auto"
 ```
 
-Provider keys can be passed through environment variables when not using the installer:
+## Горячие клавиши
+
+- `Ctrl+Enter` — запустить цепочку агентов (в поле ввода задачи)
+- `Ctrl+S` — сохранить настройки
+
+## Установщик
+
+Terminal-first CLI для Ubuntu/Debian серверов:
+
+```bash
+./install.sh
+```
+
+Опциональный Electron-лаунчер:
 
 ```powershell
-$env:AGENT_STUDIO_OPENAI_API_KEY = "..."
-$env:AGENT_STUDIO_OPENROUTER_API_KEY = "..."
-$env:AGENT_STUDIO_API_KEY = "..."
+npm run dev:installer
+npm run dist:installer:win
+npm run dist:installer:linux
 ```
-
-Ollama defaults to:
-
-```text
-http://localhost:11434
-```
-
-## Manual OpenHands Launch
-
-After dependencies are installed:
-
-```powershell
-$env:AGENT_STUDIO_CONFIG_PATH = "$PWD\configs\agents.json"
-$env:OH_PERSISTENCE_DIR = "$PWD\.openhands"
-$env:SERVE_FRONTEND = "true"
-Push-Location vendor\OpenHands
-.\.venv\Scripts\python.exe -m uvicorn openhands.app_server.app:app --app-dir . --host 127.0.0.1 --port 3000
-```
-
-Open `http://127.0.0.1:3000`.
-
-## Notes for Restricted Networks
-
-- Configure proxy in the installer before downloads.
-- npm mirror can be configured with `npm config set registry <url>`.
-- pip/uv can use mirror env vars or command-line index settings.
-- For cloud providers blocked by network policy, use OpenRouter or a custom OpenAI-compatible base URL.
