@@ -8,13 +8,30 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from .config_store import ConfigStore
-from .models import AgentsConfig, RunAgentsRequest, RunAgentsResponse, TaskStatus
+from .models import (
+    AgentsConfig,
+    GitCommitRequest,
+    GitHubCreateRepoRequest,
+    GitHubPullRequestRequest,
+    GitPushRequest,
+    RunAgentsRequest,
+    RunAgentsResponse,
+    SetGitRemoteRequest,
+    StartOpenVSCodeRequest,
+    TaskStatus,
+    WorkspaceActionResponse,
+    WorkspaceStatus,
+)
 from .task_runner import TERMINAL_STATUSES, TaskRegistry
+from .workspace_service import GitHubService, OpenVSCodeManager, WorkspaceService
 
 
 app = FastAPI(title="AI Agent Studio API", version="0.1.0")
 config_store = ConfigStore()
 task_registry = TaskRegistry()
+workspace_service = WorkspaceService()
+openvscode_manager = OpenVSCodeManager(workspace_service.root)
+github_service = GitHubService(workspace_service)
 
 app.add_middleware(
     CORSMiddleware,
@@ -85,6 +102,65 @@ async def stream_task_logs(task_id: str) -> StreamingResponse:
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
+@app.get("/api/workspace/status", response_model=WorkspaceStatus)
+async def get_workspace_status() -> WorkspaceStatus:
+    return workspace_service.status(openvscode_manager)
+
+
+@app.post("/api/workspace/openvscode/start", response_model=WorkspaceStatus)
+async def start_openvscode(request: StartOpenVSCodeRequest) -> WorkspaceStatus:
+    try:
+        openvscode_manager.start(request)
+        return workspace_service.status(openvscode_manager)
+    except Exception as exc:  # noqa: BLE001 - API should surface setup failures.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/workspace/openvscode/stop", response_model=WorkspaceStatus)
+async def stop_openvscode() -> WorkspaceStatus:
+    openvscode_manager.stop()
+    return workspace_service.status(openvscode_manager)
+
+
+@app.post("/api/workspace/git/remote", response_model=WorkspaceActionResponse)
+async def set_git_remote(request: SetGitRemoteRequest) -> WorkspaceActionResponse:
+    try:
+        return workspace_service.set_remote(request)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/workspace/git/commit", response_model=WorkspaceActionResponse)
+async def commit_git_changes(request: GitCommitRequest) -> WorkspaceActionResponse:
+    try:
+        return workspace_service.commit(request)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/workspace/git/push", response_model=WorkspaceActionResponse)
+async def push_git_changes(request: GitPushRequest) -> WorkspaceActionResponse:
+    try:
+        return workspace_service.push(request)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/workspace/github/repos", response_model=WorkspaceActionResponse)
+async def create_github_repo(request: GitHubCreateRepoRequest) -> WorkspaceActionResponse:
+    try:
+        return github_service.create_repo(request)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/workspace/github/pull-request", response_model=WorkspaceActionResponse)
+async def create_github_pull_request(request: GitHubPullRequestRequest) -> WorkspaceActionResponse:
+    try:
+        return github_service.create_pull_request(request)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 def sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
-

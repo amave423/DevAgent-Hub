@@ -95,5 +95,89 @@ class TaskState(BaseModel):
     activeAgentId: str | None = None
 
 
+class GitStatus(BaseModel):
+    available: bool
+    isRepository: bool
+    branch: str | None = None
+    remoteUrl: str | None = None
+    repository: str | None = None
+    changes: list[str] = Field(default_factory=list)
+    lastCommit: str | None = None
+    message: str = ""
+
+
+class OpenVSCodeStatus(BaseModel):
+    configured: bool
+    running: bool
+    url: str | None = None
+    pid: int | None = None
+    command: str | None = None
+    workspacePath: str
+    message: str = ""
+
+
+class GitHubStatus(BaseModel):
+    tokenConfigured: bool
+    owner: str | None = None
+    repository: str | None = None
+    remoteUrl: str | None = None
+    message: str = ""
+
+
+class WorkspaceStatus(BaseModel):
+    rootPath: str
+    git: GitStatus
+    openVsCode: OpenVSCodeStatus
+    github: GitHubStatus
+
+
+class StartOpenVSCodeRequest(BaseModel):
+    command: str | None = None
+    host: str = "127.0.0.1"
+    port: int = Field(default=3001, ge=1024, le=65535)
+    workspacePath: str | None = None
+    withoutConnectionToken: bool = True
+
+
+class GitHubCreateRepoRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    description: str = ""
+    visibility: Literal["private", "public"] = "private"
+    owner: str | None = None
+
+
+class GitCommitRequest(BaseModel):
+    message: str = Field(min_length=1)
+    files: list[str] = Field(default_factory=list)
+    allowEmpty: bool = False
+
+
+class GitPushRequest(BaseModel):
+    remote: str = "origin"
+    branch: str | None = None
+    setUpstream: bool = True
+
+
+class GitHubPullRequestRequest(BaseModel):
+    owner: str = Field(min_length=1)
+    repository: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    head: str = Field(min_length=1)
+    base: str = "main"
+    body: str = ""
+
+
+class SetGitRemoteRequest(BaseModel):
+    remote: str = "origin"
+    url: str = Field(min_length=1)
+
+
+class WorkspaceActionResponse(BaseModel):
+    ok: bool
+    message: str
+    output: str = ""
+    url: str | None = None
+
+
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)

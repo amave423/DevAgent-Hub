@@ -34,6 +34,14 @@ import {
   saveAgentsConfig,
   subscribeToLogs,
 } from "./api/agents";
+import {
+  commitGitChanges,
+  createGitHubRepo,
+  getWorkspaceStatus,
+  pushGitChanges,
+  startOpenVSCode,
+  stopOpenVSCode,
+} from "./api/workspace";
 import type {
   AgentDefinition,
   AgentLogEvent,
@@ -46,6 +54,8 @@ import type {
   ModelPurposeId,
   TaskState,
   WorkbenchTab,
+  WorkspaceActionResponse,
+  WorkspaceStatus,
 } from "./types";
 
 const SETTINGS_KEY = "devagent-hub.settings.v1";
@@ -122,6 +132,9 @@ const copy = {
     integrations: "Интеграции",
     guardrails: "Guardrails",
     applyPurposes: "Применить к агентам",
+    refresh: "Обновить",
+    startEditor: "Запустить редактор",
+    stopEditor: "Остановить",
   },
   en: {
     loading: "Loading DevAgent Hub",
@@ -158,6 +171,9 @@ const copy = {
     integrations: "Integrations",
     guardrails: "Guardrails",
     applyPurposes: "Apply to agents",
+    refresh: "Refresh",
+    startEditor: "Start editor",
+    stopEditor: "Stop",
   },
 } satisfies Record<AppLanguage, Record<string, string>>;
 
@@ -183,7 +199,10 @@ export function App() {
   const [logs, setLogs] = useState<AgentLogEvent[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [isStartingEditor, setIsStartingEditor] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [workspaceStatus, setWorkspaceStatus] = useState<WorkspaceStatus | null>(null);
+  const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
@@ -193,6 +212,10 @@ export function App() {
         setSettings(loadSettings(loadedConfig));
       })
       .catch((caught: Error) => setError(caught.message));
+
+    getWorkspaceStatus()
+      .then(setWorkspaceStatus)
+      .catch((caught: Error) => setWorkspaceNotice(caught.message));
 
     return () => eventSourceRef.current?.close();
   }, []);
@@ -214,21 +237,25 @@ export function App() {
     [config],
   );
 
+  const effectiveOpenVsCodeUrl = settings?.openVsCodeUrl || workspaceStatus?.openVsCode.url || "";
+
   const integrationStatuses = useMemo<IntegrationStatus[]>(
     () => [
       {
         id: "openvscode",
         label: "OpenVSCode Server",
-        status: settings?.openVsCodeUrl ? "connected" : "not_configured",
-        detail: settings?.openVsCodeUrl || t("codeEmpty"),
+        status: effectiveOpenVsCodeUrl ? "connected" : workspaceStatus?.openVsCode.configured ? "planned" : "not_configured",
+        detail: workspaceStatus?.openVsCode.message || effectiveOpenVsCodeUrl || t("codeEmpty"),
       },
       {
         id: "github",
         label: "GitHub automation",
-        status: settings?.githubOwner ? "planned" : "not_configured",
-        detail: settings?.githubOwner
-          ? `Owner: ${settings.githubOwner}`
-          : "Token/OAuth backend is the next implementation step.",
+        status: workspaceStatus?.github.tokenConfigured ? "connected" : settings?.githubOwner ? "planned" : "not_configured",
+        detail: workspaceStatus?.github.tokenConfigured
+          ? workspaceStatus.github.repository
+            ? `Repository: ${workspaceStatus.github.repository}`
+            : "GITHUB_TOKEN is configured."
+          : workspaceStatus?.github.message || "Set GITHUB_TOKEN or GH_TOKEN to enable automation.",
       },
       {
         id: "terminal",
@@ -237,8 +264,52 @@ export function App() {
         detail: "Standalone xterm transport will mirror the OpenVSCode terminal.",
       },
     ],
-    [settings, t],
+    [effectiveOpenVsCodeUrl, settings, t, workspaceStatus],
   );
+
+  async function refreshWorkspace() {
+    try {
+      const next = await getWorkspaceStatus();
+      setWorkspaceStatus(next);
+      setWorkspaceNotice(next.git.message);
+    } catch (caught) {
+      setWorkspaceNotice(caught instanceof Error ? caught.message : "Failed to refresh workspace.");
+    }
+  }
+
+  async function handleStartOpenVSCode() {
+    setIsStartingEditor(true);
+    setWorkspaceNotice(null);
+    try {
+      const next = await startOpenVSCode({
+        port: 3001,
+        workspacePath: workspaceStatus?.rootPath,
+      });
+      setWorkspaceStatus(next);
+      if (next.openVsCode.url) {
+        patchSettings({ openVsCodeUrl: next.openVsCode.url });
+      }
+      setWorkspaceNotice(next.openVsCode.message);
+    } catch (caught) {
+      setWorkspaceNotice(caught instanceof Error ? caught.message : "Failed to start OpenVSCode Server.");
+    } finally {
+      setIsStartingEditor(false);
+    }
+  }
+
+  async function handleStopOpenVSCode() {
+    setIsStartingEditor(true);
+    setWorkspaceNotice(null);
+    try {
+      const next = await stopOpenVSCode();
+      setWorkspaceStatus(next);
+      setWorkspaceNotice(next.openVsCode.message);
+    } catch (caught) {
+      setWorkspaceNotice(caught instanceof Error ? caught.message : "Failed to stop OpenVSCode Server.");
+    } finally {
+      setIsStartingEditor(false);
+    }
+  }
 
   async function handleSave() {
     if (!config || !settings) return;
@@ -382,6 +453,7 @@ export function App() {
         </header>
 
         {error && <div className="error-strip">{error}</div>}
+        {workspaceNotice && <div className="notice-strip">{workspaceNotice}</div>}
 
         <div className="workspace-layout">
           <section className="workbench">
@@ -404,10 +476,33 @@ export function App() {
                 onChange={(agents) => patchConfig((current) => normalizeAgentOrder({ ...current, agents }))}
               />
             )}
-            {activeTab === "code" && <CodePanel settings={settings} t={t} />}
+            {activeTab === "code" && (
+              <CodePanel
+                settings={settings}
+                workspaceStatus={workspaceStatus}
+                effectiveUrl={effectiveOpenVsCodeUrl}
+                isStarting={isStartingEditor}
+                onStart={() => void handleStartOpenVSCode()}
+                onStop={() => void handleStopOpenVSCode()}
+                t={t}
+              />
+            )}
             {activeTab === "terminal" && <TerminalPanel logs={logs} t={t} />}
             {activeTab === "preview" && <PreviewPanel settings={settings} patchSettings={patchSettings} t={t} />}
-            {activeTab === "github" && <GithubPanel settings={settings} patchSettings={patchSettings} statuses={integrationStatuses} t={t} />}
+            {activeTab === "github" && (
+              <GithubPanel
+                settings={settings}
+                patchSettings={patchSettings}
+                workspaceStatus={workspaceStatus}
+                statuses={integrationStatuses}
+                onRefresh={() => void refreshWorkspace()}
+                onAction={(response) => {
+                  setWorkspaceNotice(response.message);
+                  void refreshWorkspace();
+                }}
+                t={t}
+              />
+            )}
             {activeTab === "logs" && <LogsPanel logs={logs} taskState={taskState} t={t} />}
             {activeTab === "settings" && (
               <SettingsPanel
@@ -588,23 +683,51 @@ function AgentsPanel({
   );
 }
 
-function CodePanel({ settings, t }: { settings: DevHubSettings; t: (key: keyof (typeof copy)["ru"]) => string }) {
+function CodePanel({
+  workspaceStatus,
+  effectiveUrl,
+  isStarting,
+  onStart,
+  onStop,
+  t,
+}: {
+  settings: DevHubSettings;
+  workspaceStatus: WorkspaceStatus | null;
+  effectiveUrl: string;
+  isStarting: boolean;
+  onStart: () => void;
+  onStop: () => void;
+  t: (key: keyof (typeof copy)["ru"]) => string;
+}) {
   return (
     <div className="tab-panel full-bleed-panel">
       <PanelHeader
         title={t("codeTitle")}
-        subtitle="Browser VS Code powered by OpenVSCode Server."
+        subtitle={workspaceStatus?.openVsCode.message || "Browser VS Code powered by OpenVSCode Server."}
         action={
-          settings.openVsCodeUrl ? (
-            <a className="secondary-link" href={settings.openVsCodeUrl} target="_blank" rel="noreferrer">
-              <ExternalLink size={16} />
-              {t("openExternal")}
-            </a>
-          ) : null
+          <div className="inline-actions">
+            {effectiveUrl && (
+              <a className="secondary-link" href={effectiveUrl} target="_blank" rel="noreferrer">
+                <ExternalLink size={16} />
+                {t("openExternal")}
+              </a>
+            )}
+            {workspaceStatus?.openVsCode.running ? (
+              <button className="secondary-button" onClick={onStop} disabled={isStarting}>
+                {isStarting ? <Loader2 className="spin" size={16} /> : <Code2 size={16} />}
+                {t("stopEditor")}
+              </button>
+            ) : (
+              <button className="primary-button" onClick={onStart} disabled={isStarting}>
+                {isStarting ? <Loader2 className="spin" size={16} /> : <Code2 size={16} />}
+                {t("startEditor")}
+              </button>
+            )}
+          </div>
         }
       />
-      {settings.openVsCodeUrl ? (
-        <iframe className="tool-frame" title="OpenVSCode Server" src={settings.openVsCodeUrl} allow="clipboard-read; clipboard-write" />
+      {effectiveUrl ? (
+        <iframe className="tool-frame" title="OpenVSCode Server" src={effectiveUrl} allow="clipboard-read; clipboard-write" />
       ) : (
         <EmptyToolState icon={<Code2 size={32} />} title={t("notConfigured")} message={t("codeEmpty")} />
       )}
@@ -652,21 +775,60 @@ function PreviewPanel({
 function GithubPanel({
   settings,
   patchSettings,
+  workspaceStatus,
   statuses,
+  onRefresh,
+  onAction,
   t,
 }: {
   settings: DevHubSettings;
   patchSettings: (patch: Partial<DevHubSettings>) => void;
+  workspaceStatus: WorkspaceStatus | null;
   statuses: IntegrationStatus[];
+  onRefresh: () => void;
+  onAction: (response: WorkspaceActionResponse) => void;
   t: (key: keyof (typeof copy)["ru"]) => string;
 }) {
+  const [repoName, setRepoName] = useState(workspaceStatus?.github.repository ?? "devagent-hub");
+  const [commitMessage, setCommitMessage] = useState("Update DevAgent Hub workspace");
+  const [isBusy, setIsBusy] = useState(false);
+  const changedFiles = useMemo(() => workspaceStatus?.git.changes.map(changedPath).filter(isNonEmptyString) ?? [], [workspaceStatus]);
+
+  async function runAction(action: () => Promise<WorkspaceActionResponse>) {
+    setIsBusy(true);
+    try {
+      onAction(await action());
+    } catch (caught) {
+      onAction({
+        ok: false,
+        message: caught instanceof Error ? caught.message : "Workspace action failed.",
+        output: "",
+      });
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   return (
     <div className="tab-panel github-panel">
-      <PanelHeader title={t("githubTitle")} subtitle={t("githubHint")} />
+      <PanelHeader
+        title={t("githubTitle")}
+        subtitle={workspaceStatus?.github.message || t("githubHint")}
+        action={
+          <button className="secondary-button" onClick={onRefresh}>
+            <RotateCcw size={16} />
+            {t("refresh")}
+          </button>
+        }
+      />
       <div className="settings-grid">
         <label className="field">
           <span>Owner / organization</span>
           <input value={settings.githubOwner} onChange={(event) => patchSettings({ githubOwner: event.target.value })} placeholder="amave423" />
+        </label>
+        <label className="field">
+          <span>Repository name</span>
+          <input value={repoName} onChange={(event) => setRepoName(event.target.value)} placeholder="devagent-hub" />
         </label>
         <label className="field">
           <span>Default visibility</span>
@@ -678,23 +840,92 @@ function GithubPanel({
             <option value="public">Public</option>
           </select>
         </label>
+        <label className="field">
+          <span>Commit message</span>
+          <input value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} />
+        </label>
       </div>
+      <div className="github-status-grid">
+        <Metric label="Workspace" value={workspaceStatus?.rootPath ?? "unknown"} />
+        <Metric label="Branch" value={workspaceStatus?.git.branch ?? "not a repo"} />
+        <Metric label="Changed files" value={String(changedFiles.length)} />
+        <Metric label="Token" value={workspaceStatus?.github.tokenConfigured ? "configured" : "missing"} />
+      </div>
+      {workspaceStatus?.git.changes.length ? (
+        <div className="change-list">
+          {workspaceStatus.git.changes.slice(0, 10).map((change) => (
+            <code key={change}>{change}</code>
+          ))}
+        </div>
+      ) : null}
       <div className="action-board">
-        {[
-          ["Create repository", "Agent creates a repository from the current workspace."],
-          ["Commit changes", "Agent writes commit messages and stages scoped files."],
-          ["Push branch", "Agent pushes to a feature branch."],
-          ["Open pull request", "Agent creates PR title, body and checklist."],
-        ].map(([title, detail]) => (
-          <article key={title}>
-            <Github size={18} />
-            <strong>{title}</strong>
-            <p>{detail}</p>
-            <button className="secondary-button" disabled>
-              Backend next
-            </button>
-          </article>
-        ))}
+        <article>
+          <Github size={18} />
+          <strong>Create repository</strong>
+          <p>Uses GITHUB_TOKEN or GH_TOKEN and creates the repository through GitHub API.</p>
+          <button
+            className="secondary-button"
+            disabled={isBusy || !workspaceStatus?.github.tokenConfigured || !repoName.trim()}
+            onClick={() =>
+              void runAction(() =>
+                createGitHubRepo({
+                  name: repoName.trim(),
+                  owner: settings.githubOwner.trim() || null,
+                  visibility: settings.githubDefaultVisibility,
+                  description: "Created by DevAgent Hub",
+                }),
+              )
+            }
+          >
+            Create
+          </button>
+        </article>
+        <article>
+          <FileCode2 size={18} />
+          <strong>Commit changes</strong>
+          <p>Stages only changed files reported by git status, then creates a commit.</p>
+          <button
+            className="secondary-button"
+            disabled={isBusy || changedFiles.length === 0 || !commitMessage.trim()}
+            onClick={() =>
+              void runAction(() =>
+                commitGitChanges({
+                  message: commitMessage.trim(),
+                  files: changedFiles,
+                }),
+              )
+            }
+          >
+            Commit
+          </button>
+        </article>
+        <article>
+          <Github size={18} />
+          <strong>Push branch</strong>
+          <p>Pushes the current branch to origin and sets upstream on first push.</p>
+          <button
+            className="secondary-button"
+            disabled={isBusy || !workspaceStatus?.git.isRepository || !workspaceStatus.git.branch}
+            onClick={() =>
+              void runAction(() =>
+                pushGitChanges({
+                  branch: workspaceStatus?.git.branch,
+                  setUpstream: true,
+                }),
+              )
+            }
+          >
+            Push
+          </button>
+        </article>
+        <article>
+          <ShieldCheck size={18} />
+          <strong>Pull request</strong>
+          <p>Backend endpoint is ready; UI form for PR title/body is next.</p>
+          <button className="secondary-button" disabled>
+            Next
+          </button>
+        </article>
       </div>
       <IntegrationCards statuses={statuses.filter((status) => status.id === "github")} t={t} />
     </div>
@@ -992,4 +1223,17 @@ function normalizeAgentOrder(config: AgentsConfig): AgentsConfig {
       .sort((a, b) => a.order - b.order)
       .map((agent, index) => ({ ...agent, order: index + 1 })),
   };
+}
+
+function changedPath(statusLine: string): string | null {
+  const path = statusLine.slice(3).trim();
+  if (!path) return null;
+  if (path.includes(" -> ")) {
+    return path.split(" -> ").at(-1) ?? null;
+  }
+  return path;
+}
+
+function isNonEmptyString(value: string | null): value is string {
+  return Boolean(value);
 }

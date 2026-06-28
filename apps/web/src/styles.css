@@ -252,6 +252,14 @@ a {
   background: #2c3640;
 }
 
+.inline-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .danger-button {
   background: #442129;
   border: 1px solid #713540;
@@ -270,6 +278,13 @@ a {
   color: #ffd7d7;
   background: #4c2028;
   border-bottom: 1px solid #713540;
+}
+
+.notice-strip {
+  padding: 8px 16px;
+  color: #bfdbfe;
+  background: #183154;
+  border-bottom: 1px solid #305d91;
 }
 
 .workspace-layout {
@@ -560,6 +575,29 @@ textarea:focus {
   line-height: 1.45;
 }
 
+.github-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.change-list {
+  display: grid;
+  gap: 8px;
+  max-height: 150px;
+  overflow: auto;
+  border: 1px solid #2e3742;
+  background: #11171d;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.change-list code {
+  color: #cbd5e1;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .settings-sections {
   display: grid;
   gap: 14px;
@@ -769,12 +807,22 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 
+  .github-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .right-rail {
     border-left: 0;
     border-top: 1px solid #28313a;
   }
 
   .purpose-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .github-status-grid {
     grid-template-columns: 1fr;
   }
 }

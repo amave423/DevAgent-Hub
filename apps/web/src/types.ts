@@ -108,3 +108,73 @@ export interface IntegrationStatus {
   status: "connected" | "not_configured" | "planned";
   detail: string;
 }
+
+export interface GitStatus {
+  available: boolean;
+  isRepository: boolean;
+  branch?: string | null;
+  remoteUrl?: string | null;
+  repository?: string | null;
+  changes: string[];
+  lastCommit?: string | null;
+  message: string;
+}
+
+export interface OpenVSCodeStatus {
+  configured: boolean;
+  running: boolean;
+  url?: string | null;
+  pid?: number | null;
+  command?: string | null;
+  workspacePath: string;
+  message: string;
+}
+
+export interface GitHubStatus {
+  tokenConfigured: boolean;
+  owner?: string | null;
+  repository?: string | null;
+  remoteUrl?: string | null;
+  message: string;
+}
+
+export interface WorkspaceStatus {
+  rootPath: string;
+  git: GitStatus;
+  openVsCode: OpenVSCodeStatus;
+  github: GitHubStatus;
+}
+
+export interface StartOpenVSCodeRequest {
+  command?: string | null;
+  host?: string;
+  port?: number;
+  workspacePath?: string | null;
+  withoutConnectionToken?: boolean;
+}
+
+export interface WorkspaceActionResponse {
+  ok: boolean;
+  message: string;
+  output: string;
+  url?: string | null;
+}
+
+export interface GitHubCreateRepoRequest {
+  name: string;
+  description?: string;
+  visibility: "private" | "public";
+  owner?: string | null;
+}
+
+export interface GitCommitRequest {
+  message: string;
+  files: string[];
+  allowEmpty?: boolean;
+}
+
+export interface GitPushRequest {
+  remote?: string;
+  branch?: string | null;
+  setUpstream?: boolean;
+}
