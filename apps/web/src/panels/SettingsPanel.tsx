@@ -1,5 +1,17 @@
-import { Cpu, ShieldCheck, SlidersHorizontal, TestTube2 } from "lucide-react";
-import type { AgentModel, AgentsConfig, DevHubSettings, IntegrationStatus } from "../types";
+import { Cloud, Cpu, Download, HardDrive, Loader2, ShieldCheck, SlidersHorizontal, TestTube2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ProgressBar } from "../components/ProgressBar";
+import { addCloudModel, getLocalModelDownload, getModelCatalog, startLocalModelDownload } from "../api/models";
+import type {
+  AddCloudModelRequest,
+  AgentModel,
+  AgentsConfig,
+  DevHubSettings,
+  IntegrationStatus,
+  LocalModelSource,
+  ModelCatalogResponse,
+  ModelDownloadState,
+} from "../types";
 import { PanelHeader } from "../components/PanelHeader";
 import { IntegrationCards } from "../components/IntegrationCard";
 import type { CopyKey } from "../i18n/ru";
@@ -22,6 +34,98 @@ export function SettingsPanel({
   applyPurposes: () => void;
   t: (key: CopyKey) => string;
 }) {
+  const [catalog, setCatalog] = useState<ModelCatalogResponse | null>(null);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [localSource, setLocalSource] = useState<LocalModelSource>("ollama");
+  const [selectedLocalModelId, setSelectedLocalModelId] = useState("ollama-qwen25-coder-7b");
+  const [hfRepoId, setHfRepoId] = useState("");
+  const [hfFilename, setHfFilename] = useState("");
+  const [hfDisplayName, setHfDisplayName] = useState("");
+  const [downloadState, setDownloadState] = useState<ModelDownloadState | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
+  const [cloudForm, setCloudForm] = useState<AddCloudModelRequest>({
+    id: "",
+    name: "",
+    provider: "custom",
+    baseUrl: "",
+    apiKeyEnv: "AGENT_STUDIO_API_KEY",
+    apiKey: "",
+    description: "",
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    getModelCatalog()
+      .then((loadedCatalog) => {
+        if (cancelled) return;
+        setCatalog(loadedCatalog);
+        const first = loadedCatalog.localModels.find((model) => model.source === localSource);
+        if (first) setSelectedLocalModelId(first.id);
+      })
+      .catch((caught: Error) => {
+        if (!cancelled) setCatalogError(caught.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const localModels = useMemo(
+    () => catalog?.localModels.filter((model) => model.source === localSource) ?? [],
+    [catalog, localSource],
+  );
+
+  const selectedLocalModel = localModels.find((model) => model.id === selectedLocalModelId) ?? localModels[0];
+  const selectedLocalModelAlreadyAvailable = Boolean(
+    selectedLocalModel && config.models.some((model) => model.id === selectedLocalModel.id),
+  );
+  const cloudProviderOptions = catalog?.cloudProviders ?? [
+    {
+      id: "custom",
+      name: "Custom",
+      baseUrl: "",
+      apiKeyEnv: "AGENT_STUDIO_API_KEY",
+      description: "",
+    },
+  ];
+  const canDownloadLocalModel =
+    Boolean(selectedLocalModel) &&
+    !isDownloading &&
+    (localSource !== "huggingface" || (hfRepoId.trim().length > 0 && hfFilename.trim().length > 0));
+
+  useEffect(() => {
+    if (localModels.length === 0) return;
+    if (!localModels.some((model) => model.id === selectedLocalModelId)) {
+      setSelectedLocalModelId(localModels[0].id);
+    }
+  }, [localModels, selectedLocalModelId]);
+
+  useEffect(() => {
+    if (!downloadState || ["completed", "failed", "cancelled"].includes(downloadState.status)) return;
+
+    const timer = window.setInterval(() => {
+      void getLocalModelDownload(downloadState.downloadId)
+        .then((state) => {
+          setDownloadState(state);
+          if (state.status === "completed") {
+            setIsDownloading(false);
+            setSettingsNotice(t("downloadReady"));
+            if (state.model) upsertModel(state.model);
+          }
+          if (state.status === "failed" || state.status === "cancelled") {
+            setIsDownloading(false);
+          }
+        })
+        .catch((caught: Error) => {
+          setIsDownloading(false);
+          setSettingsNotice(caught.message);
+        });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [downloadState?.downloadId, downloadState?.status]);
+
   function patchPurpose(id: ModelPurposeId, modelId: string) {
     patchSettings({
       modelPurposes: settings.modelPurposes.map((purpose) =>
@@ -30,10 +134,200 @@ export function SettingsPanel({
     });
   }
 
+  function upsertModel(model: AgentModel) {
+    patchConfig((current) => {
+      const existing = current.models.some((item) => item.id === model.id);
+      return {
+        ...current,
+        models: existing
+          ? current.models.map((item) => (item.id === model.id ? model : item))
+          : [...current.models, model],
+      };
+    });
+  }
+
+  async function handleDownloadModel() {
+    if (!selectedLocalModel) return;
+    setSettingsNotice(null);
+    setIsDownloading(true);
+    try {
+      const state = await startLocalModelDownload({
+        modelId: selectedLocalModel.id,
+        source: localSource,
+        repoId: localSource === "huggingface" ? hfRepoId.trim() : undefined,
+        filename: localSource === "huggingface" ? hfFilename.trim() : undefined,
+        displayName: localSource === "huggingface" ? hfDisplayName.trim() : undefined,
+      });
+      setDownloadState(state);
+    } catch (caught) {
+      setIsDownloading(false);
+      setSettingsNotice(caught instanceof Error ? caught.message : "Model download failed.");
+    }
+  }
+
+  function updateCloudForm(patch: Partial<AddCloudModelRequest>) {
+    setCloudForm((current) => ({ ...current, ...patch }));
+  }
+
+  function selectCloudProvider(provider: string) {
+    const preset = catalog?.cloudProviders.find((item) => item.id === provider);
+    setCloudForm((current) => ({
+      ...current,
+      provider,
+      baseUrl: preset?.baseUrl ?? current.baseUrl ?? "",
+      apiKeyEnv: preset?.apiKeyEnv ?? current.apiKeyEnv ?? "AGENT_STUDIO_API_KEY",
+    }));
+  }
+
+  async function handleAddCloudModel() {
+    if (!cloudForm.name.trim()) return;
+    setSettingsNotice(null);
+    try {
+      const saved = await addCloudModel({
+        ...cloudForm,
+        id: cloudForm.id?.trim() || undefined,
+        name: cloudForm.name.trim(),
+        provider: cloudForm.provider.trim() || "custom",
+        baseUrl: cloudForm.baseUrl?.trim() || undefined,
+        apiKeyEnv: cloudForm.apiKeyEnv?.trim() || undefined,
+        apiKey: cloudForm.apiKey?.trim() || undefined,
+        description: cloudForm.description?.trim() || "",
+      });
+      patchConfig(() => saved);
+      setSettingsNotice(t("cloudModelAdded"));
+      setCloudForm((current) => ({ ...current, id: "", name: "", apiKey: "", description: "" }));
+    } catch (caught) {
+      setSettingsNotice(caught instanceof Error ? caught.message : "Cloud model was not added.");
+    }
+  }
+
   return (
     <div className="tab-panel settings-panel">
       <PanelHeader title={t("settingsTitle")} subtitle={t("settingsSubtitle")} />
       <div className="settings-sections">
+        {settingsNotice && <div className="notice-strip inline">{settingsNotice}</div>}
+        {catalogError && <div className="error-strip inline">{catalogError}</div>}
+
+        <section>
+          <h3>{t("localModels")}</h3>
+          <p className="settings-note">{t("modelDownloadNote")}</p>
+          <div className="settings-grid">
+            <label className="field">
+              <span>{t("localModelSource")}</span>
+              <select
+                value={localSource}
+                onChange={(event) => setLocalSource(event.target.value as LocalModelSource)}
+              >
+                <option value="ollama">{t("ollamaSource")}</option>
+                <option value="huggingface">{t("huggingfaceSource")}</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>{t("localModel")}</span>
+              <select
+                value={selectedLocalModel?.id ?? ""}
+                onChange={(event) => setSelectedLocalModelId(event.target.value)}
+              >
+                {localModels.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name} · {model.provider}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {selectedLocalModel && (
+            <div className="model-detail-row">
+              <HardDrive size={18} />
+              <span>
+                {selectedLocalModel.description} RAM {selectedLocalModel.requirements.ramGb}GB · disk {selectedLocalModel.requirements.diskGb}GB
+              </span>
+              {selectedLocalModelAlreadyAvailable && <em>{t("modelAlreadyAvailable")}</em>}
+            </div>
+          )}
+
+          {localSource === "huggingface" && (
+            <>
+              <div className="settings-grid compact-grid">
+                <label className="field">
+                  <span>{t("huggingFaceRepo")}</span>
+                  <input value={hfRepoId} onChange={(event) => setHfRepoId(event.target.value)} placeholder="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF" />
+                </label>
+                <label className="field">
+                  <span>{t("huggingFaceFilename")}</span>
+                  <input value={hfFilename} onChange={(event) => setHfFilename(event.target.value)} placeholder="model-q4_k_m.gguf" />
+                </label>
+                <label className="field">
+                  <span>{t("huggingFaceDisplayName")}</span>
+                  <input value={hfDisplayName} onChange={(event) => setHfDisplayName(event.target.value)} placeholder="Qwen coder local" />
+                </label>
+              </div>
+              <p className="settings-note">{t("localRuntimeNotice")}</p>
+            </>
+          )}
+
+          <div className="inline-actions left">
+            <button className="secondary-button" onClick={() => void handleDownloadModel()} disabled={!canDownloadLocalModel}>
+              {isDownloading ? <Loader2 className="spin" size={16} /> : <Download size={16} />}
+              {t("downloadModel")}
+            </button>
+          </div>
+
+          {downloadState && (
+            <div className="download-state">
+              <div className="section-heading compact">
+                <div>
+                  <h3>{t("downloadProgress")}</h3>
+                  <span>{downloadState.message}</span>
+                </div>
+                <strong>{downloadState.progress}%</strong>
+              </div>
+              <ProgressBar value={downloadState.progress} />
+            </div>
+          )}
+        </section>
+
+        <section>
+          <h3>{t("cloudModels")}</h3>
+          <div className="settings-grid">
+            <label className="field">
+              <span>{t("cloudProvider")}</span>
+              <select value={cloudForm.provider} onChange={(event) => selectCloudProvider(event.target.value)}>
+                {cloudProviderOptions.map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>{t("cloudModelName")}</span>
+              <input value={cloudForm.name} onChange={(event) => updateCloudForm({ name: event.target.value })} placeholder="gpt-4o-mini, claude-sonnet, provider/model" />
+            </label>
+            <label className="field">
+              <span>{t("customModelId")}</span>
+              <input value={cloudForm.id ?? ""} onChange={(event) => updateCloudForm({ id: event.target.value })} placeholder="custom-coder" />
+            </label>
+            <label className="field">
+              <span>{t("cloudBaseUrl")}</span>
+              <input value={cloudForm.baseUrl ?? ""} onChange={(event) => updateCloudForm({ baseUrl: event.target.value })} placeholder="https://api.example.com/v1" />
+            </label>
+            <label className="field">
+              <span>{t("apiKeyEnv")}</span>
+              <input value={cloudForm.apiKeyEnv ?? ""} onChange={(event) => updateCloudForm({ apiKeyEnv: event.target.value })} placeholder="AGENT_STUDIO_API_KEY" />
+            </label>
+            <label className="field">
+              <span>{t("apiKeyOptional")}</span>
+              <input value={cloudForm.apiKey ?? ""} onChange={(event) => updateCloudForm({ apiKey: event.target.value })} type="password" placeholder="sk-..." />
+            </label>
+          </div>
+          <button className="secondary-button" onClick={() => void handleAddCloudModel()} disabled={!cloudForm.name.trim()}>
+            <Cloud size={16} />
+            {t("addCloudModel")}
+          </button>
+        </section>
+
         <section>
           <h3>{t("modelPurposes")}</h3>
           <div className="purpose-list">

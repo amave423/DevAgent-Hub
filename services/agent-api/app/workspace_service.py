@@ -217,12 +217,12 @@ class OpenVSCodeManager:
             )
 
         target_dir.mkdir(parents=True, exist_ok=True)
-        npm = shutil.which("npm.cmd" if os.name == "nt" else "npm") or shutil.which("npm")
-        if not npm:
+        npm_command = npm_install_command(self.workspace_root)
+        if not npm_command:
             raise RuntimeError("npm was not found in PATH. Install Node.js 22 before installing the browser code editor.")
 
         result = run_process(
-            [npm, "install", "--prefix", str(target_dir), "code-server@4.117.0"],
+            [*npm_command, "install", "--prefix", str(target_dir), "code-server@4.117.0"],
             cwd=self.workspace_root,
             timeout=900,
         )
@@ -358,6 +358,26 @@ def run_process(args: Sequence[str], *, cwd: Path, check: bool = True, timeout: 
     if check and result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or result.stdout.strip() or f"Command failed: {' '.join(args)}")
     return result
+
+
+def npm_install_command(workspace_root: Path) -> list[str] | None:
+    if os.name == "nt":
+        node_candidates = [workspace_root / ".tools" / "node-v22" / "node.exe"]
+        node_path = shutil.which("node")
+        if node_path:
+            node_candidates.append(Path(node_path))
+        for node in node_candidates:
+            if not node.exists():
+                continue
+            npm_cli = node.parent / "node_modules" / "npm" / "bin" / "npm-cli.js"
+            if npm_cli.exists():
+                return [str(node), str(npm_cli)]
+
+        npm = shutil.which("npm.cmd") or shutil.which("npm")
+        return [npm] if npm else None
+
+    npm = shutil.which("npm")
+    return [npm] if npm else None
 
 
 def github_token() -> str | None:

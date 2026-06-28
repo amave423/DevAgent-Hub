@@ -13,6 +13,11 @@ class ModelKind(str, Enum):
     none = "none"
 
 
+class LocalModelSource(str, Enum):
+    ollama = "ollama"
+    huggingface = "huggingface"
+
+
 class TaskStatus(str, Enum):
     queued = "queued"
     running = "running"
@@ -32,8 +37,64 @@ class AgentModel(BaseModel):
     provider: str = Field(min_length=1)
     kind: ModelKind
     baseUrl: str | None = None
+    apiKeyEnv: str | None = None
     description: str = ""
     requirements: ModelRequirements = Field(default_factory=lambda: ModelRequirements(ramGb=0, diskGb=0))
+
+
+class LocalModelCatalogItem(BaseModel):
+    id: str = Field(min_length=2)
+    source: LocalModelSource
+    name: str = Field(min_length=1)
+    provider: str = Field(min_length=1)
+    description: str = ""
+    requirements: ModelRequirements = Field(default_factory=lambda: ModelRequirements(ramGb=0, diskGb=0))
+    modelName: str | None = None
+    repoId: str | None = None
+    filename: str | None = None
+    runnable: bool = True
+
+
+class CloudProviderPreset(BaseModel):
+    id: str = Field(min_length=2)
+    name: str = Field(min_length=1)
+    baseUrl: str | None = None
+    apiKeyEnv: str
+    description: str = ""
+
+
+class ModelCatalogResponse(BaseModel):
+    localSources: list[LocalModelSource]
+    localModels: list[LocalModelCatalogItem]
+    cloudProviders: list[CloudProviderPreset]
+
+
+class ModelDownloadRequest(BaseModel):
+    modelId: str = Field(min_length=2)
+    source: LocalModelSource | None = None
+    repoId: str | None = None
+    filename: str | None = None
+    displayName: str | None = None
+
+
+class ModelDownloadState(BaseModel):
+    downloadId: str
+    modelId: str
+    source: LocalModelSource
+    status: TaskStatus
+    progress: int = Field(ge=0, le=100)
+    message: str = ""
+    model: AgentModel | None = None
+
+
+class AddCloudModelRequest(BaseModel):
+    id: str | None = None
+    name: str = Field(min_length=1)
+    provider: str = Field(default="custom", min_length=2)
+    baseUrl: str | None = None
+    apiKeyEnv: str | None = None
+    apiKey: str | None = None
+    description: str = ""
 
 
 class AgentDefinition(BaseModel):

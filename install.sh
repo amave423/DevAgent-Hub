@@ -13,7 +13,7 @@ fi
 INSTALL_DIR="${DEVAGENT_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
 SKIP_SYSTEM_PACKAGES=0
 SKIP_DOCKER=1
-SKIP_OLLAMA=0
+SKIP_OLLAMA=1
 APT_UPDATED=0
 CLI_ARGS=()
 
@@ -67,6 +67,10 @@ while [[ $# -gt 0 ]]; do
     --skip-ollama)
       SKIP_OLLAMA=1
       CLI_ARGS+=("--no-model-pull")
+      shift
+      ;;
+    --with-ollama)
+      SKIP_OLLAMA=0
       shift
       ;;
     -y|--yes)

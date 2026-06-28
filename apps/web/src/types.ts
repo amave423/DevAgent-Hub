@@ -1,4 +1,5 @@
 export type ModelKind = "local" | "cloud" | "none";
+export type LocalModelSource = "ollama" | "huggingface";
 export type TaskStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 export type LogLevel = "info" | "debug" | "warning" | "error" | "success";
 export type AppLanguage = "ru" | "en";
@@ -29,8 +30,64 @@ export interface AgentModel {
   provider: string;
   kind: ModelKind;
   baseUrl?: string | null;
+  apiKeyEnv?: string | null;
   description: string;
   requirements: ModelRequirements;
+}
+
+export interface LocalModelCatalogItem {
+  id: string;
+  source: LocalModelSource;
+  name: string;
+  provider: string;
+  description: string;
+  requirements: ModelRequirements;
+  modelName?: string | null;
+  repoId?: string | null;
+  filename?: string | null;
+  runnable: boolean;
+}
+
+export interface CloudProviderPreset {
+  id: string;
+  name: string;
+  baseUrl?: string | null;
+  apiKeyEnv: string;
+  description: string;
+}
+
+export interface ModelCatalogResponse {
+  localSources: LocalModelSource[];
+  localModels: LocalModelCatalogItem[];
+  cloudProviders: CloudProviderPreset[];
+}
+
+export interface ModelDownloadRequest {
+  modelId: string;
+  source?: LocalModelSource | null;
+  repoId?: string | null;
+  filename?: string | null;
+  displayName?: string | null;
+}
+
+export interface ModelDownloadState {
+  downloadId: string;
+  modelId: string;
+  source: LocalModelSource;
+  status: TaskStatus;
+  progress: number;
+  message: string;
+  model?: AgentModel | null;
+}
+
+export interface AddCloudModelRequest {
+  id?: string | null;
+  name: string;
+  provider: string;
+  baseUrl?: string | null;
+  apiKeyEnv?: string | null;
+  apiKey?: string | null;
+  description?: string;
 }
 
 export interface AgentDefinition {

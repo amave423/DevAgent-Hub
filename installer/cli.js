@@ -121,7 +121,11 @@ async function collectSettings(args, modelOptions, agentOptions, interactive) {
     }
 
     if (selectedModels.some((model) => model.provider === "ollama")) {
-      base.pullLocalModels = await yesNo(rl, "Pull selected Ollama models during install", true);
+      base.pullLocalModels = await yesNo(
+        rl,
+        "Download selected Ollama models now (you can also install local models later in Settings)",
+        false,
+      );
     } else {
       base.pullLocalModels = false;
     }
@@ -162,7 +166,8 @@ async function promptAgentModels(rl, agents, selectedModels, defaultModelId) {
 }
 
 async function promptModels(rl, modelOptions, selectedIds) {
-  console.log("\nAvailable models:");
+  console.log("\nRecommended models:");
+  console.log("  Choose models to expose in the web UI now. Local models can be downloaded now or later from Settings.");
   modelOptions.forEach((model, index) => {
     const req = model.requirements
       ? ` RAM ${model.requirements.ramGb || "?"}GB, disk ${model.requirements.diskGb || "?"}GB`

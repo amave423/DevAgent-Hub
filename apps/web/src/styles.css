@@ -100,6 +100,37 @@ a {
   cursor: pointer;
 }
 
+.sidebar button {
+  position: relative;
+  overflow: visible;
+}
+
+.sidebar button::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  z-index: 50;
+  left: calc(100% + 10px);
+  top: 50%;
+  max-width: 220px;
+  padding: 6px 8px;
+  border: 1px solid #35414d;
+  border-radius: 6px;
+  color: #eef3f7;
+  background: #151b21;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: opacity 0.12s ease;
+}
+
+.sidebar button:hover::after,
+.sidebar button:focus-visible::after {
+  opacity: 1;
+}
+
 .sidebar button:hover,
 .sidebar button.active,
 .icon-button:hover {
@@ -260,6 +291,11 @@ a {
   flex-wrap: wrap;
 }
 
+.inline-actions.left {
+  justify-content: flex-start;
+  margin-top: 12px;
+}
+
 .danger-button {
   background: #442129;
   border: 1px solid #713540;
@@ -285,6 +321,12 @@ a {
   color: #bfdbfe;
   background: #183154;
   border-bottom: 1px solid #305d91;
+}
+
+.error-strip.inline,
+.notice-strip.inline {
+  border-radius: 7px;
+  border: 1px solid currentColor;
 }
 
 .workspace-layout {
@@ -542,6 +584,10 @@ textarea:focus {
   gap: 12px;
 }
 
+.settings-grid.compact-grid {
+  margin-top: 12px;
+}
+
 .field {
   display: grid;
   gap: 7px;
@@ -610,6 +656,47 @@ textarea:focus {
 .settings-sections h3 {
   font-size: 15px;
   margin-bottom: 12px;
+}
+
+.settings-note {
+  margin: -4px 0 12px;
+  color: #9fadba;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.model-detail-row {
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid #2d3742;
+  border-radius: 7px;
+  background: #11171d;
+}
+
+.model-detail-row span {
+  color: #b8c5d0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.model-detail-row em {
+  color: #9be3c3;
+  font-size: 12px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.download-state {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #2d3742;
+  border-radius: 7px;
+  background: #11171d;
 }
 
 .purpose-list {
@@ -795,6 +882,12 @@ textarea:focus {
     overflow-x: auto;
     align-content: center;
     justify-content: start;
+  }
+
+  .sidebar button::after {
+    left: 50%;
+    top: calc(100% + 8px);
+    transform: translateX(-50%);
   }
 
   .topbar {

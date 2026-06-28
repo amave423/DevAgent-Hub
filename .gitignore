@@ -5,6 +5,7 @@ build/
 .venv/
 venv/
 .tools/
+.models/
 .agents/
 .devagent/
 .openhands/

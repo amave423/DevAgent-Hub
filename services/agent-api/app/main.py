@@ -11,12 +11,17 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config_store import ConfigStore
+from .model_manager import ModelManager
 from .models import (
+    AddCloudModelRequest,
     AgentsConfig,
     GitCommitRequest,
     GitHubCreateRepoRequest,
     GitHubPullRequestRequest,
     GitPushRequest,
+    ModelCatalogResponse,
+    ModelDownloadRequest,
+    ModelDownloadState,
     RunAgentsRequest,
     RunAgentsResponse,
     SetGitRemoteRequest,
@@ -34,6 +39,7 @@ app = FastAPI(title="DevAgent Hub API", version="0.2.0")
 config_store = ConfigStore()
 task_registry = TaskRegistry()
 workspace_service = WorkspaceService()
+model_manager = ModelManager(config_store, workspace_service.root)
 openvscode_manager = OpenVSCodeManager(workspace_service.root)
 github_service = GitHubService(workspace_service)
 terminal_manager = TerminalManager(workspace_service.root)
@@ -125,6 +131,39 @@ async def stream_task_logs(task_id: str) -> StreamingResponse:
             await asyncio.sleep(0.4)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# ---------------------------------------------------------------------------
+# Models
+# ---------------------------------------------------------------------------
+
+@app.get("/api/models/catalog", response_model=ModelCatalogResponse)
+async def get_model_catalog() -> ModelCatalogResponse:
+    return model_manager.catalog()
+
+
+@app.post("/api/models/local/download", response_model=ModelDownloadState)
+async def download_local_model(request: ModelDownloadRequest) -> ModelDownloadState:
+    try:
+        return await model_manager.start_download(request)
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/api/models/local/downloads/{download_id}", response_model=ModelDownloadState)
+async def get_model_download(download_id: str) -> ModelDownloadState:
+    state = model_manager.get_download(download_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail="Model download not found")
+    return state
+
+
+@app.post("/api/models/cloud", response_model=AgentsConfig)
+async def add_cloud_model(request: AddCloudModelRequest) -> AgentsConfig:
+    try:
+        return model_manager.add_cloud_model(request)
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------

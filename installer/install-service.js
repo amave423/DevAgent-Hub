@@ -38,7 +38,7 @@ async function checkSystem() {
     checkTool({
       id: "npm",
       label: "npm",
-      candidates: [commandCandidate(platformCommand("npm"), ["--version"])],
+      candidates: [npmCommandCandidate(["--version"])],
       required: true,
     }),
     checkTool({
@@ -51,7 +51,7 @@ async function checkSystem() {
     checkTool({
       id: "ollama",
       label: "Ollama",
-      candidates: [commandCandidate(platformCommand("ollama"), ["--version"])],
+      candidates: [commandCandidate(ollamaCommand(), ["--version"])],
       required: false,
     }),
     checkTool({
@@ -167,29 +167,20 @@ function buildInstallExecutionSteps(rawSettings) {
       id: "node-deps",
       label: "Install Node.js dependencies",
       cwd: settings.installPath,
-      command: platformCommand("npm"),
-      args: ["install"],
+      ...npmStep(settings, "node-deps", "Install Node.js dependencies", ["install"]),
       timeoutMs: 600000,
     },
     {
-      id: "web-build",
-      label: "Build web UI",
-      cwd: settings.installPath,
-      command: platformCommand("npm"),
-      args: ["run", "build:web"],
+      ...npmStep(settings, "web-build", "Build web UI", ["run", "build:web"]),
       timeoutMs: 300000,
     },
     {
-      id: "code-editor-install",
-      label: "Install browser code editor (optional)",
-      cwd: settings.installPath,
-      command: platformCommand("npm"),
-      args: [
+      ...npmStep(settings, "code-editor-install", "Install browser code editor (optional)", [
         "install",
         "--prefix",
         path.join(settings.installPath, ".tools", "code-server"),
         `code-server@${CODE_SERVER_VERSION}`,
-      ],
+      ]),
       optional: true,
       timeoutMs: 900000,
     },
@@ -272,9 +263,58 @@ function commandCandidate(command, args) {
   return { command, args };
 }
 
+function npmCommandCandidate(args, installPath = PROJECT_ROOT) {
+  const npm = npmCommand(installPath);
+  return commandCandidate(npm.command, [...npm.args, ...args]);
+}
+
+function npmStep(settings, id, label, args) {
+  const npm = npmCommand(settings.installPath);
+  return {
+    id,
+    label,
+    cwd: settings.installPath,
+    command: npm.command,
+    args: [...npm.args, ...args],
+  };
+}
+
+function npmCommand(installPath = PROJECT_ROOT) {
+  if (process.platform !== "win32") {
+    return { command: "npm", args: [] };
+  }
+
+  const npmCli = [
+    path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js"),
+    path.join(installPath, ".tools", "node-v22", "node_modules", "npm", "bin", "npm-cli.js"),
+  ].find((candidate) => fsSync.existsSync(candidate));
+
+  if (npmCli) {
+    return { command: process.execPath, args: [npmCli] };
+  }
+
+  return { command: "cmd.exe", args: ["/d", "/s", "/c", "npm.cmd"] };
+}
+
+function ollamaCommand() {
+  if (process.platform !== "win32") return "ollama";
+
+  const candidates = [
+    process.env.OLLAMA_COMMAND,
+    process.env.LOCALAPPDATA
+      ? path.join(process.env.LOCALAPPDATA, "Programs", "Ollama", "ollama.exe")
+      : "",
+    process.env.ProgramFiles
+      ? path.join(process.env.ProgramFiles, "Ollama", "ollama.exe")
+      : "",
+    "ollama.exe",
+  ].filter(Boolean);
+
+  return candidates.find((candidate) => candidate === "ollama.exe" || fsSync.existsSync(candidate)) || "ollama.exe";
+}
+
 function platformCommand(command) {
   if (process.platform !== "win32") return command;
-  if (command === "npm") return "npm.cmd";
   if (command === "ollama") return "ollama.exe";
   if (command === "code-server") return "code-server.cmd";
   return command;
@@ -813,7 +853,7 @@ async function buildWarnings(settings) {
   }
 
   if (settings.pullLocalModels && selectedOllamaModelNames(settings).length > 0) {
-    const ollama = await runCommand(platformCommand("ollama"), ["--version"]);
+    const ollama = await runCommand(ollamaCommand(), ["--version"]);
     if (ollama.error) {
       warnings.push("Ollama is not available in PATH. Local model pull will be skipped as a non-fatal installer step.");
     }
@@ -829,7 +869,7 @@ function buildOllamaPullSteps(settings) {
     id: `ollama-pull-${modelName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`,
     label: `Pull Ollama model ${modelName} (optional)`,
     cwd: settings.installPath,
-    command: platformCommand("ollama"),
+    command: ollamaCommand(),
     args: ["pull", modelName],
     optional: true,
     timeoutMs: 1800000,

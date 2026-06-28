@@ -179,7 +179,7 @@ def get_provider(provider_id: str, model: dict[str, Any] | None = None) -> LLMPr
             or ""
         )
     else:
-        # Custom provider — fall back to generic key
-        api_key = os.getenv("AGENT_STUDIO_API_KEY") or ""
+        api_key_env = str(model.get("apiKeyEnv") or "") if model else ""
+        api_key = (os.getenv(api_key_env) if api_key_env else "") or os.getenv("AGENT_STUDIO_API_KEY") or ""
 
     return OpenAIProvider(api_key=api_key, base_url=base_url)

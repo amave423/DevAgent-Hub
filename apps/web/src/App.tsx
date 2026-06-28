@@ -5,6 +5,7 @@ import {
   Bot,
   BrainCircuit,
   Code2,
+  Github,
   Globe2,
   Languages,
   LayoutDashboard,
@@ -14,6 +15,7 @@ import {
   RotateCcw,
   Save,
   Settings2,
+  ScrollText,
   TerminalSquare,
 } from "lucide-react";
 
@@ -42,8 +44,8 @@ const tabs: Array<{ id: WorkbenchTab; icon: ReactNode; labelKey: CopyKey }> = [
   { id: "code", icon: <Code2 size={18} />, labelKey: "tabCode" },
   { id: "terminal", icon: <TerminalSquare size={18} />, labelKey: "tabTerminal" },
   { id: "preview", icon: <Globe2 size={18} />, labelKey: "tabPreview" },
-  { id: "github", icon: <Activity size={18} />, labelKey: "tabGithub" },
-  { id: "logs", icon: <Activity size={18} />, labelKey: "tabLogs" },
+  { id: "github", icon: <Github size={18} />, labelKey: "tabGithub" },
+  { id: "logs", icon: <ScrollText size={18} />, labelKey: "tabLogs" },
   { id: "settings", icon: <Settings2 size={18} />, labelKey: "tabSettings" },
 ];
 
@@ -134,6 +136,7 @@ export function App() {
               className={activeTab === tab.id ? "active" : ""}
               onClick={() => setActiveTab(tab.id)}
               title={t(tab.labelKey)}
+              data-tooltip={t(tab.labelKey)}
             >
               {tab.icon}
             </button>

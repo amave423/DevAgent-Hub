@@ -4,6 +4,7 @@ param(
   [switch]$Yes,
   [switch]$SkipSystemPackages,
   [switch]$SkipOllama,
+  [switch]$WithOllama,
   [string]$Models = "",
   [string]$Model = "",
   [string]$AgentModels = "",
@@ -24,6 +25,23 @@ function Write-Step($Message) {
 function Test-Command($Name) {
   return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
+
+function Add-PathIfExists($Path) {
+  if ([string]::IsNullOrWhiteSpace($Path)) { return }
+  if ((Test-Path $Path) -and (($env:Path -split ";") -notcontains $Path)) {
+    $env:Path = "$Path;$env:Path"
+  }
+}
+
+function Refresh-KnownToolPaths {
+  Add-PathIfExists (Join-Path ${env:ProgramFiles} "Git\cmd")
+  Add-PathIfExists (Join-Path ${env:ProgramFiles(x86)} "Git\cmd")
+  Add-PathIfExists (Join-Path $env:LOCALAPPDATA "Programs\Python\Launcher")
+  Add-PathIfExists (Join-Path $env:LOCALAPPDATA "Programs\Ollama")
+  Add-PathIfExists (Join-Path ${env:ProgramFiles} "Ollama")
+}
+
+Refresh-KnownToolPaths
 
 function Test-Node22 {
   if (!(Test-Command "node")) { return $false }
@@ -50,6 +68,7 @@ function Install-WingetPackage($Id, $Label) {
   }
   Write-Step "Installing $Label"
   winget install -e --id $Id --accept-package-agreements --accept-source-agreements
+  Refresh-KnownToolPaths
 }
 
 function Install-PortableNode22 {
@@ -100,8 +119,12 @@ if (!$SkipSystemPackages) {
 
   Install-PortableNode22
 
-  if (!$SkipOllama -and !(Test-Command "ollama")) {
+  if ($WithOllama -and !$SkipOllama -and !(Test-Command "ollama")) {
     Install-WingetPackage "Ollama.Ollama" "Ollama"
+  } elseif ($WithOllama -and !$SkipOllama) {
+    Write-Step "Ollama is already available"
+  } else {
+    Write-Step "Skipping Ollama bootstrap. Local models can be installed later in the web UI."
   }
 } else {
   Write-Step "Skipping system package installation"
@@ -123,10 +146,11 @@ if (!(Test-Path (Join-Path $InstallPath "package.json"))) {
 }
 
 Set-Location $InstallPath
+Refresh-KnownToolPaths
 
 $argsList = @("--install-path", $InstallPath, "--repo-url", $RepoUrl)
 if ($Yes) { $argsList += "--yes" }
-if ($SkipOllama) { $argsList += "--no-model-pull" }
+if ($SkipOllama -or (!$WithOllama -and !(Test-Command "ollama"))) { $argsList += "--no-model-pull" }
 if ($Models) { $argsList += @("--models", $Models) }
 if ($Model) { $argsList += @("--model", $Model) }
 if ($AgentModels) { $argsList += @("--agent-models", $AgentModels) }

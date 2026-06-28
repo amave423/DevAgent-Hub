@@ -11,7 +11,7 @@ DevAgent Hub
 - Code на базе OpenVSCode Server.
 - Terminal и Preview для разработки и проверки приложений.
 - GitHub: создание репозитория, commit, push и pull request.
-- Settings: выбор языка RU/EN, модели по назначению, runner mode, URL интеграций.
+- Settings: выбор языка RU/EN, модели по назначению, скачивание локальных моделей, cloud API, runner mode, URL интеграций.
 - Terminal-first установщик для Linux/Windows; Electron только optional launcher.
 
 Локальная проверка:
@@ -31,5 +31,5 @@ DevAgent Hub
 
 - UI-панель уже реализована в `apps/web`.
 - Backend агентов работает через `services/agent-api`.
-- OpenVSCode Server пока подключается как внешний URL в Settings.
-- GitHub и отдельный terminal transport требуют backend endpoints.
+- OpenVSCode Server устанавливается и запускается через вкладку Code или может подключаться внешним URL.
+- GitHub, terminal transport и model manager работают через backend endpoints.

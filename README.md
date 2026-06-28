@@ -13,11 +13,11 @@ IDE-панель с мультиагентной цепочкой (Generator, Cr
 - **Preview** — встроенный просмотр локальных веб-приложений
 - **GitHub** — создание репозиториев, коммиты, пуши, pull request через API
 - **Logs** — потоковые логи выполнения агентов в реальном времени
-- **Settings** — выбор языка RU/EN, назначения моделей по задачам, runner mode, URL интеграций
+- **Settings** — выбор языка RU/EN, назначения моделей по задачам, скачивание локальных моделей, добавление облачных OpenAI-compatible API, runner mode, URL интеграций
 
 ## Требования
 
-- **Windows 10+**: можно запускать `install.ps1`, он сам подготовит Git/Python/Node/Ollama.
+- **Windows 10+**: можно запускать `install.ps1`, он сам подготовит Git/Python/Node. Ollama ставится только по флагу `-WithOllama`.
 - **Ubuntu 22.04/24.04**: можно запускать `install.sh`, он сам подготовит системные зависимости.
 - **Node.js 22.12+**, **Python 3.12+**, **Git** нужны только для ручного dev-запуска без bootstrap-установщика.
 - **Docker** (опционально) — для контейнерного запуска
@@ -29,6 +29,12 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\install.ps1
 ```
 
+Если хочешь сразу поставить Ollama для локальных моделей:
+
+```powershell
+.\install.ps1 -WithOllama
+```
+
 После установки UI доступен на `http://127.0.0.1:3000`.
 
 ## Установка (Ubuntu 22.04/24.04)
@@ -36,6 +42,12 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ```bash
 chmod +x ./install.sh
 ./install.sh
+```
+
+Для установки Ollama на Ubuntu:
+
+```bash
+./install.sh --with-ollama
 ```
 
 ## Dev-запуск вручную
@@ -76,7 +88,7 @@ apps/web/                    Фронтенд (React + TypeScript + Vite)
     hooks/                   React-хуки (useAgents, useWorkspace)
     panels/                  8 панелей (Chat, Agents, Code, Terminal, Preview, GitHub, Logs, Settings)
     components/              UI-компоненты (Terminal, StatusPill, ProgressBar, ...)
-    api/                     API-клиенты (agents, workspace, terminal)
+    api/                     API-клиенты (agents, models, workspace, terminal)
     types.ts                 Общие типы данных
     styles.css               Глобальные стили
 
@@ -84,6 +96,7 @@ services/agent-api/          Бэкенд (FastAPI + Python 3.12)
   app/
     main.py                  Все HTTP и WebSocket endpoints
     models.py                Pydantic-модели запросов/ответов
+    model_manager.py         Каталог моделей, загрузки Ollama/Hugging Face, добавление cloud API
     config_store.py          Чтение/запись configs/agents.json
     llm.py                   Единый интерфейс LLM (Ollama, OpenAI, OpenRouter, Mock)
     task_runner.py           Мультиагентная цепочка с реальными LLM-вызовами
@@ -107,6 +120,10 @@ scripts/                     Smoke-тесты и утилиты
 | `/api/agents/status/{id}` | GET | Статус задачи |
 | `/api/agents/cancel/{id}` | POST | Отменить задачу |
 | `/api/agents/logs/{id}` | GET | SSE-поток логов |
+| `/api/models/catalog` | GET | Каталог локальных источников и cloud provider presets |
+| `/api/models/local/download` | POST | Запустить скачивание локальной модели |
+| `/api/models/local/downloads/{id}` | GET | Статус и прогресс скачивания модели |
+| `/api/models/cloud` | POST | Добавить OpenAI-compatible облачную модель |
 | `/api/terminal/ws` | WebSocket | PTY-терминал |
 | `/api/workspace/status` | GET | Статус workspace |
 | `/api/workspace/files` | GET | Список файлов |
@@ -132,6 +149,7 @@ scripts/                     Smoke-тесты и утилиты
 | `AGENT_STUDIO_API_KEY` | API-ключ для OpenAI/OpenRouter |
 | `AGENT_STUDIO_OPENAI_API_KEY` | Отдельный ключ для OpenAI |
 | `AGENT_STUDIO_OPENROUTER_API_KEY` | Отдельный ключ для OpenRouter |
+| `HUGGINGFACE_TOKEN` / `HF_TOKEN` | Токен Hugging Face для приватных моделей или повышенных лимитов |
 | `OLLAMA_BASE_URL` | URL Ollama (default: `http://localhost:11434`) |
 | `DEVAGENT_ALLOW_EXTERNAL_WORKSPACE` | `1` чтобы разрешить workspace вне корня |
 

@@ -44,11 +44,14 @@ def main() -> int:
     try:
         health = wait_for_json(opener, f'{base_url}/health')
         config = get_json(opener, f'{base_url}/api/agents/config')
+        catalog = get_json(opener, f'{base_url}/api/models/catalog')
         workspace = get_json(opener, f'{base_url}/api/workspace/status')
 
         assert health['status'] == 'ok'
         assert len(config['models']) > 0
         assert len(config['agents']) > 0
+        assert len(catalog['localModels']) > 0
+        assert len(catalog['cloudProviders']) > 0
         assert workspace['rootPath'] == str(workspace_root)
         assert 'git' in workspace
         assert 'openVsCode' in workspace
@@ -61,6 +64,7 @@ def main() -> int:
         print('DevHub API smoke: OK')
         print(f"models={len(config['models'])}")
         print(f"agents={len(config['agents'])}")
+        print(f"catalog_local_models={len(catalog['localModels'])}")
         print(f"workspace={workspace['rootPath']}")
         print(f"git_repository={workspace['git']['isRepository']}")
         return 0
