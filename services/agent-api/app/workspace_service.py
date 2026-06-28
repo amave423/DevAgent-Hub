@@ -159,7 +159,7 @@ class OpenVSCodeManager:
 
     def status(self) -> OpenVSCodeStatus:
         running = self.process is not None and self.process.poll() is None
-        command = self.last_command or detect_openvscode_command()
+        command = self.last_command if running else detect_openvscode_command(self.workspace_root) or self.last_command
         url = self.last_url if running or self.last_url else os.getenv("OPENVSCODE_URL")
         return OpenVSCodeStatus(
             configured=bool(command or url),
@@ -175,7 +175,7 @@ class OpenVSCodeManager:
         if self.process is not None and self.process.poll() is None:
             return self.status()
 
-        command = request.command or self.last_command or detect_openvscode_command()
+        command = request.command or detect_openvscode_command(self.workspace_root) or self.last_command
         if not command:
             raise RuntimeError("OpenVSCode Server command not found. Set OPENVSCODE_COMMAND or install openvscode-server.")
 
@@ -204,6 +204,77 @@ class OpenVSCodeManager:
                 self.process.kill()
                 self.process.wait(timeout=8)
         return self.status()
+
+    def install(self) -> WorkspaceActionResponse:
+        """Download code-server (portable) into .tools/ if not already present."""
+        target_dir = self.workspace_root / ".tools" / "code-server"
+        existing = detect_openvscode_command(self.workspace_root)
+        if existing:
+            return WorkspaceActionResponse(
+                ok=True,
+                message="OpenVSCode Server is already available.",
+                output=existing,
+            )
+
+        import platform
+        import tempfile
+        import zipfile
+
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        # Use code-server as the default portable editor
+        version = "4.96.4"
+        system = platform.system().lower()
+        machine = platform.machine().lower()
+
+        if system == "windows":
+            arch = "x64" if "64" in machine or "amd64" in machine else "arm64"
+            archive_name = f"code-server-{version}-win-{arch}.zip"
+        elif system == "darwin":
+            arch = "arm64" if machine == "arm64" else "x64"
+            archive_name = f"code-server-{version}-macos-{arch}.tar.gz"
+        else:
+            arch = "arm64" if machine == "aarch64" else "amd64"
+            archive_name = f"code-server-{version}-linux-{arch}.tar.gz"
+
+        download_url = f"https://github.com/coder/code-server/releases/download/v{version}/{archive_name}"
+        tmp_archive = Path(tempfile.mkdtemp(prefix="code-server-")) / archive_name
+
+        try:
+            import urllib.request
+            urllib.request.urlretrieve(download_url, tmp_archive)
+
+            if archive_name.endswith(".zip"):
+                with zipfile.ZipFile(tmp_archive, "r") as zf:
+                    zf.extractall(target_dir)
+            else:
+                import tarfile
+                with tarfile.open(tmp_archive, "r:gz") as tf:
+                    tf.extractall(target_dir)
+
+            # Make binaries executable on Unix
+            if system != "windows":
+                for bin_path in target_dir.rglob("code-server"):
+                    bin_path.chmod(bin_path.stat().st_mode | 0o755)
+
+            result_cmd = detect_openvscode_command(self.workspace_root)
+            return WorkspaceActionResponse(
+                ok=True,
+                message="OpenVSCode Server installed successfully.",
+                output=result_cmd or str(target_dir),
+            )
+        except Exception as exc:
+            return WorkspaceActionResponse(
+                ok=False,
+                message=f"Installation failed: {exc}",
+                output="",
+            )
+        finally:
+            tmp_archive.unlink(missing_ok=True)
+            try:
+                tmp_archive.parent.rmdir()
+            except Exception:
+                pass
 
     def _resolve_workspace(self, raw_path: str | None) -> Path:
         workspace = (Path(raw_path).expanduser() if raw_path else self.workspace_root).resolve()
@@ -261,7 +332,23 @@ class GitHubService:
 def build_openvscode_args(command: str, request: StartOpenVSCodeRequest, workspace: Path) -> list[str]:
     executable = Path(command).name.lower()
     if executable.startswith("code-server"):
-        return [command, "--bind-addr", f"{request.host}:{request.port}", str(workspace)]
+        data_dir = workspace / ".tools" / "code-server-data"
+        extensions_dir = workspace / ".tools" / "code-server-extensions"
+        config_path = workspace / ".tools" / "code-server-config" / "config.yaml"
+        return [
+            command,
+            "--bind-addr",
+            f"{request.host}:{request.port}",
+            "--auth",
+            "none",
+            "--config",
+            str(config_path),
+            "--user-data-dir",
+            str(data_dir),
+            "--extensions-dir",
+            str(extensions_dir),
+            str(workspace),
+        ]
 
     args = [command, "--host", request.host, "--port", str(request.port)]
     if request.withoutConnectionToken and request.host in {"127.0.0.1", "localhost"}:
@@ -270,7 +357,18 @@ def build_openvscode_args(command: str, request: StartOpenVSCodeRequest, workspa
     return args
 
 
-def detect_openvscode_command() -> str | None:
+def detect_openvscode_command(workspace_root: Path | None = None) -> str | None:
+    if workspace_root:
+        local_candidates = [
+            workspace_root / ".tools" / "code-server" / "code-server.cmd",
+            workspace_root / ".tools" / "code-server" / "node_modules" / ".bin" / "code-server.cmd",
+            workspace_root / ".tools" / "code-server" / "bin" / "code-server",
+            workspace_root / ".tools" / "openvscode-server" / "bin" / "openvscode-server",
+        ]
+        for candidate in local_candidates:
+            if candidate.exists():
+                return str(candidate)
+
     for candidate in ("openvscode-server", "code-server"):
         found = shutil.which(candidate)
         if found:
