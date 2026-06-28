@@ -65,10 +65,9 @@ export function subscribeToLogs(
   });
 
   source.onerror = () => {
-    handlers.onError(new Error("Поток логов был прерван."));
+    handlers.onError(new Error("Log stream was interrupted."));
     source.close();
   };
 
   return source;
 }
-

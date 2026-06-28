@@ -1,6 +1,22 @@
 export type ModelKind = "local" | "cloud" | "none";
 export type TaskStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 export type LogLevel = "info" | "debug" | "warning" | "error" | "success";
+export type AppLanguage = "ru" | "en";
+export type WorkbenchTab =
+  | "chat"
+  | "agents"
+  | "code"
+  | "terminal"
+  | "preview"
+  | "github"
+  | "logs"
+  | "settings";
+export type ModelPurposeId =
+  | "planning"
+  | "coding"
+  | "review"
+  | "testing"
+  | "final";
 
 export interface ModelRequirements {
   ramGb: number;
@@ -68,4 +84,27 @@ export interface AgentLogEvent {
   phase: string;
   message: string;
   progress: number;
+}
+
+export interface ModelPurpose {
+  id: ModelPurposeId;
+  label: string;
+  description: string;
+  modelId: string;
+}
+
+export interface DevHubSettings {
+  language: AppLanguage;
+  openVsCodeUrl: string;
+  previewUrl: string;
+  githubOwner: string;
+  githubDefaultVisibility: "private" | "public";
+  modelPurposes: ModelPurpose[];
+}
+
+export interface IntegrationStatus {
+  id: string;
+  label: string;
+  status: "connected" | "not_configured" | "planned";
+  detail: string;
 }
