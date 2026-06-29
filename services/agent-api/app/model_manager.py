@@ -4,6 +4,9 @@ import asyncio
 import os
 import re
 import shutil
+import subprocess
+import urllib.error
+import urllib.request
 import uuid
 from pathlib import Path
 
@@ -18,6 +21,8 @@ from .models import (
     ModelCatalogResponse,
     ModelDownloadRequest,
     ModelDownloadState,
+    ModelFileListResponse,
+    ModelSearchResponse,
     ModelKind,
     ModelRequirements,
     TaskStatus,
@@ -44,6 +49,33 @@ LOCAL_MODEL_CATALOG = [
         requirements=ModelRequirements(ramGb=10, diskGb=6),
     ),
     LocalModelCatalogItem(
+        id="ollama-qwen25-coder-14b",
+        source=LocalModelSource.ollama,
+        name="Qwen2.5 Coder 14B",
+        provider="ollama",
+        modelName="qwen2.5-coder:14b",
+        description="Stronger local coding model, needs more RAM than 7B.",
+        requirements=ModelRequirements(ramGb=16, diskGb=9),
+    ),
+    LocalModelCatalogItem(
+        id="ollama-codellama-7b",
+        source=LocalModelSource.ollama,
+        name="Code Llama 7B",
+        provider="ollama",
+        modelName="codellama:7b-code",
+        description="Code-focused local model from the Code Llama family.",
+        requirements=ModelRequirements(ramGb=8, diskGb=4),
+    ),
+    LocalModelCatalogItem(
+        id="ollama-codellama-13b",
+        source=LocalModelSource.ollama,
+        name="Code Llama 13B",
+        provider="ollama",
+        modelName="codellama:13b-code",
+        description="Larger Code Llama variant for more complex code edits.",
+        requirements=ModelRequirements(ramGb=16, diskGb=8),
+    ),
+    LocalModelCatalogItem(
         id="ollama-llama32-3b",
         source=LocalModelSource.ollama,
         name="Llama 3.2 3B",
@@ -51,6 +83,33 @@ LOCAL_MODEL_CATALOG = [
         modelName="llama3.2:3b",
         description="Быстрая лёгкая модель для коротких задач, планов и черновиков.",
         requirements=ModelRequirements(ramGb=4, diskGb=3),
+    ),
+    LocalModelCatalogItem(
+        id="ollama-llama31-8b",
+        source=LocalModelSource.ollama,
+        name="Llama 3.1 8B",
+        provider="ollama",
+        modelName="llama3.1:8b",
+        description="General-purpose local model for planning and text tasks.",
+        requirements=ModelRequirements(ramGb=8, diskGb=5),
+    ),
+    LocalModelCatalogItem(
+        id="ollama-mistral-7b",
+        source=LocalModelSource.ollama,
+        name="Mistral 7B",
+        provider="ollama",
+        modelName="mistral:7b",
+        description="Fast general-purpose local model.",
+        requirements=ModelRequirements(ramGb=8, diskGb=4),
+    ),
+    LocalModelCatalogItem(
+        id="ollama-phi4",
+        source=LocalModelSource.ollama,
+        name="Phi-4",
+        provider="ollama",
+        modelName="phi4:latest",
+        description="Compact reasoning model for lightweight agent steps.",
+        requirements=ModelRequirements(ramGb=8, diskGb=6),
     ),
     LocalModelCatalogItem(
         id="huggingface-custom-file",
@@ -97,11 +156,44 @@ class ModelManager:
         self._workers: dict[str, asyncio.Task[None]] = {}
 
     def catalog(self) -> ModelCatalogResponse:
+        local_models = merge_ollama_installed_models(LOCAL_MODEL_CATALOG, ollama_installed_models())
         return ModelCatalogResponse(
             localSources=[LocalModelSource.ollama, LocalModelSource.huggingface],
-            localModels=LOCAL_MODEL_CATALOG,
+            localModels=local_models,
             cloudProviders=CLOUD_PROVIDER_PRESETS,
         )
+
+    def search(self, source: str, query: str, limit: int = 25) -> ModelSearchResponse:
+        normalized_source = LocalModelSource(source)
+        if normalized_source == LocalModelSource.ollama:
+            models = merge_ollama_installed_models(LOCAL_MODEL_CATALOG, ollama_installed_models())
+            needle = query.strip().lower()
+            if needle:
+                models = [
+                    model for model in models
+                    if needle in model.id.lower()
+                    or needle in model.name.lower()
+                    or needle in (model.modelName or "").lower()
+                ]
+                if not any((model.modelName or model.id).lower() == needle for model in models):
+                    models.insert(0, ollama_custom_item(query.strip()))
+            return ModelSearchResponse(source=normalized_source, models=models[:limit])
+
+        return ModelSearchResponse(source=normalized_source, models=huggingface_search(query, limit))
+
+    def huggingface_files(self, repo_id: str) -> ModelFileListResponse:
+        try:
+            from huggingface_hub import HfApi
+        except ImportError as exc:
+            raise RuntimeError("huggingface_hub is not installed. Re-run installer dependencies.") from exc
+
+        api = HfApi(token=os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HF_TOKEN") or None)
+        files = api.list_repo_files(repo_id=repo_id, repo_type="model")
+        preferred = [
+            path for path in files
+            if path.lower().endswith((".gguf", ".safetensors", ".bin", ".pt", ".pth"))
+        ]
+        return ModelFileListResponse(repoId=repo_id, files=preferred or files)
 
     async def start_download(self, request: ModelDownloadRequest) -> ModelDownloadState:
         item = self._resolve_catalog_item(request)
@@ -176,7 +268,7 @@ class ModelManager:
     async def _download_ollama(self, download_id: str, item: LocalModelCatalogItem) -> AgentModel:
         command = find_ollama_command()
         if not command:
-            raise RuntimeError("Ollama не найден. Установи Ollama или выбери другой источник локальных моделей.")
+            command = await self._install_ollama(download_id)
 
         model_name = item.modelName or item.name
         process = await asyncio.create_subprocess_exec(
@@ -210,6 +302,54 @@ class ModelManager:
             description=item.description,
             requirements=item.requirements,
         )
+
+    async def _install_ollama(self, download_id: str) -> str:
+        self._update(download_id, progress=5, message="Ollama is not installed. Installing Ollama runtime...")
+        if os.name == "nt":
+            winget = shutil.which("winget")
+            if not winget:
+                raise RuntimeError("Ollama is required for Ollama models, but winget was not found for automatic installation.")
+            result = await asyncio.to_thread(
+                subprocess.run,
+                [
+                    winget,
+                    "install",
+                    "-e",
+                    "--id",
+                    "Ollama.Ollama",
+                    "--accept-package-agreements",
+                    "--accept-source-agreements",
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=1800,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "Ollama installer failed.")
+        else:
+            curl = shutil.which("curl")
+            shell = shutil.which("sh")
+            if not curl or not shell:
+                raise RuntimeError("Ollama is required, but curl/sh was not found for automatic installation.")
+            result = await asyncio.to_thread(
+                subprocess.run,
+                [shell, "-c", "curl -fsSL https://ollama.com/install.sh | sh"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=1800,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "Ollama installer failed.")
+
+        command = find_ollama_command()
+        if not command:
+            raise RuntimeError("Ollama installation completed, but ollama executable was not found. Restart DevAgent Hub and try again.")
+        self._update(download_id, progress=15, message="Ollama runtime installed. Pulling selected model...")
+        return command
 
     async def _download_huggingface(
         self,
@@ -269,6 +409,8 @@ class ModelManager:
         )
 
     def _resolve_catalog_item(self, request: ModelDownloadRequest) -> LocalModelCatalogItem:
+        if request.source == LocalModelSource.ollama and request.modelName:
+            return ollama_custom_item(request.modelName)
         for item in LOCAL_MODEL_CATALOG:
             if item.id == request.modelId and (request.source is None or request.source == item.source):
                 return item
@@ -301,6 +443,101 @@ def find_ollama_command() -> str | None:
         str(Path(os.getenv("ProgramFiles", "")) / "Ollama" / "ollama.exe"),
     ]
     return next((candidate for candidate in candidates if candidate and Path(candidate).exists()), None)
+
+
+def ollama_installed_models() -> list[LocalModelCatalogItem]:
+    try:
+        request = urllib.request.Request("http://127.0.0.1:11434/api/tags", method="GET")
+        with urllib.request.urlopen(request, timeout=2) as response:
+            import json
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, TimeoutError, ValueError):
+        return []
+
+    items = []
+    for model in payload.get("models", []):
+        name = str(model.get("name") or model.get("model") or "").strip()
+        if not name:
+            continue
+        items.append(
+            LocalModelCatalogItem(
+                id=f"ollama-{slugify(name)}",
+                source=LocalModelSource.ollama,
+                name=name,
+                provider="ollama",
+                modelName=name,
+                description="Installed Ollama model.",
+                requirements=ModelRequirements(ramGb=0, diskGb=0),
+                installed=True,
+                sizeBytes=int(model.get("size") or 0) or None,
+                details=str(model.get("details") or ""),
+            )
+        )
+    return items
+
+
+def merge_ollama_installed_models(
+    recommended: list[LocalModelCatalogItem],
+    installed: list[LocalModelCatalogItem],
+) -> list[LocalModelCatalogItem]:
+    by_name = {model.modelName or model.name: model for model in installed}
+    merged = []
+    for model in recommended:
+        installed_model = by_name.get(model.modelName or model.name)
+        merged.append(
+            model.model_copy(update={
+                "installed": bool(installed_model),
+                "sizeBytes": installed_model.sizeBytes if installed_model else model.sizeBytes,
+                "details": installed_model.details if installed_model else model.details,
+            })
+        )
+    known_names = {model.modelName or model.name for model in recommended}
+    merged.extend(model for model in installed if (model.modelName or model.name) not in known_names)
+    return merged
+
+
+def ollama_custom_item(model_name: str) -> LocalModelCatalogItem:
+    clean_name = model_name.strip()
+    return LocalModelCatalogItem(
+        id=f"ollama-{slugify(clean_name)}",
+        source=LocalModelSource.ollama,
+        name=clean_name,
+        provider="ollama",
+        modelName=clean_name,
+        description="Custom Ollama model name. DevAgent Hub will run `ollama pull` for it.",
+        requirements=ModelRequirements(ramGb=0, diskGb=0),
+    )
+
+
+def huggingface_search(query: str, limit: int) -> list[LocalModelCatalogItem]:
+    try:
+        from huggingface_hub import HfApi
+    except ImportError as exc:
+        raise RuntimeError("huggingface_hub is not installed. Re-run installer dependencies.") from exc
+
+    api = HfApi(token=os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HF_TOKEN") or None)
+    search = query.strip() or "gguf"
+    results = api.list_models(search=search, limit=limit)
+    items: list[LocalModelCatalogItem] = []
+    for model in results:
+        repo_id = str(getattr(model, "modelId", "") or "").strip()
+        if not repo_id:
+            continue
+        downloads = getattr(model, "downloads", None)
+        likes = getattr(model, "likes", None)
+        items.append(
+            LocalModelCatalogItem(
+                id=f"huggingface-{slugify(repo_id)}",
+                source=LocalModelSource.huggingface,
+                name=repo_id,
+                provider="huggingface-local",
+                repoId=repo_id,
+                description=f"Hugging Face model repo. downloads={downloads or 0}, likes={likes or 0}",
+                requirements=ModelRequirements(ramGb=0, diskGb=0),
+                runnable=False,
+            )
+        )
+    return items
 
 
 def parse_percent(line: str) -> int | None:

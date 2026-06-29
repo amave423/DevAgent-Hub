@@ -593,6 +593,10 @@ textarea:focus {
   gap: 7px;
 }
 
+.action-field {
+  align-content: end;
+}
+
 .field span {
   color: #aebbc7;
   font-size: 12px;

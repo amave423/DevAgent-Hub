@@ -297,7 +297,13 @@ function npmCommand(installPath = PROJECT_ROOT) {
 }
 
 function ollamaCommand() {
-  if (process.platform !== "win32") return "ollama";
+  return availableOllamaCommand() || (process.platform === "win32" ? "ollama.exe" : "ollama");
+}
+
+function availableOllamaCommand() {
+  if (process.platform !== "win32") {
+    return findInPath("ollama") ? "ollama" : null;
+  }
 
   const candidates = [
     process.env.OLLAMA_COMMAND,
@@ -307,10 +313,30 @@ function ollamaCommand() {
     process.env.ProgramFiles
       ? path.join(process.env.ProgramFiles, "Ollama", "ollama.exe")
       : "",
-    "ollama.exe",
   ].filter(Boolean);
 
-  return candidates.find((candidate) => candidate === "ollama.exe" || fsSync.existsSync(candidate)) || "ollama.exe";
+  return candidates.find((candidate) => fsSync.existsSync(candidate)) || findInPath("ollama.exe");
+}
+
+function findInPath(command) {
+  const pathEntries = String(process.env.PATH || "")
+    .split(path.delimiter)
+    .filter(Boolean);
+  const hasExtension = Boolean(path.extname(command));
+  const extensions = process.platform === "win32" && !hasExtension
+    ? String(process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM").split(";")
+    : [""];
+
+  for (const entry of pathEntries) {
+    for (const extension of extensions) {
+      const candidate = path.join(entry, hasExtension ? command : `${command}${extension.toLowerCase()}`);
+      const upperCandidate = path.join(entry, hasExtension ? command : `${command}${extension.toUpperCase()}`);
+      if (fsSync.existsSync(candidate)) return candidate;
+      if (fsSync.existsSync(upperCandidate)) return upperCandidate;
+    }
+  }
+
+  return null;
 }
 
 function platformCommand(command) {
@@ -721,7 +747,7 @@ function buildWindowsStartScript(settings) {
     "$SecretsFile = Join-Path $PSScriptRoot 'secrets.env'",
     "function Import-EnvFile($Path) {",
     "  if (!(Test-Path $Path)) { return }",
-    "  Get-Content $Path | ForEach-Object {",
+    "  Get-Content -LiteralPath $Path -Encoding UTF8 | ForEach-Object {",
     "    $Line = $_.Trim()",
     "    if (!$Line -or $Line.StartsWith('#') -or !$Line.Contains('=')) { return }",
     "    $Name, $Value = $Line.Split('=', 2)",
@@ -732,10 +758,16 @@ function buildWindowsStartScript(settings) {
     "Import-EnvFile $SecretsFile",
     "$env:SERVE_FRONTEND = 'true'",
     "$env:DEVAGENT_WORKSPACE = \"$ProjectRoot\"",
+    "$env:AGENT_CONFIG_PATH = Join-Path $ProjectRoot '.devagent\\agents.json'",
     "$env:DEVAGENT_WEB_DIST = Join-Path $ProjectRoot 'apps\\web\\dist'",
     "$Python = Join-Path $ProjectRoot '.venv\\Scripts\\python.exe'",
     "$ApiDir = Join-Path $ProjectRoot 'services\\agent-api'",
     "Set-Location $ProjectRoot",
+    "try {",
+    "  $Health = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:3000/health' -TimeoutSec 2",
+    "  if ($Health.StatusCode -eq 200) { return }",
+    "} catch {",
+    "}",
     "& $Python -m uvicorn app.main:app --app-dir $ApiDir --host 127.0.0.1 --port 3000",
     "",
   ].join("\n");
@@ -746,12 +778,41 @@ function buildWindowsTaskInstallScript() {
     "$ErrorActionPreference = 'Stop'",
     "$TaskName = 'DevAgent Hub'",
     "$ScriptPath = Join-Path $PSScriptRoot 'start-devagent-hub.ps1'",
-    "$Action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument \"-NoProfile -ExecutionPolicy Bypass -File `\"$ScriptPath`\"\"",
-    "$Trigger = New-ScheduledTaskTrigger -AtLogOn",
-    "$Principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel LeastPrivilege",
-    "Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Force | Out-Null",
-    "Start-ScheduledTask -TaskName $TaskName",
-    "Write-Host 'DevAgent Hub scheduled task installed and started at http://127.0.0.1:3000.'",
+    "$PowerShell = (Get-Command powershell.exe).Source",
+    "$Arguments = \"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `\"$ScriptPath`\"\"",
+    "function Install-StartupShortcut {",
+    "  $StartupDir = [Environment]::GetFolderPath('Startup')",
+    "  $ShortcutPath = Join-Path $StartupDir 'DevAgent Hub.lnk'",
+    "  $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path",
+    "  try {",
+    "    $Shell = New-Object -ComObject WScript.Shell",
+    "    $Shortcut = $Shell.CreateShortcut($ShortcutPath)",
+    "    $Shortcut.TargetPath = $PowerShell",
+    "    $Shortcut.Arguments = $Arguments",
+    "    $Shortcut.WorkingDirectory = $ProjectRoot",
+    "    $Shortcut.WindowStyle = 7",
+    "    $Shortcut.Description = 'Start DevAgent Hub'",
+    "    $Shortcut.Save()",
+    "  } catch {",
+    "    $CmdPath = Join-Path $StartupDir 'DevAgent Hub.cmd'",
+    "    Set-Content -LiteralPath $CmdPath -Encoding ASCII -Value \"@echo off`r`nstart `\"`\" /min powershell.exe $Arguments`r`n\"",
+    "  }",
+    "  Start-Process -FilePath $PowerShell -ArgumentList $Arguments -WindowStyle Hidden",
+    "  Write-Host 'DevAgent Hub startup shortcut installed and started at http://127.0.0.1:3000.'",
+    "}",
+    "try {",
+    "  $Action = New-ScheduledTaskAction -Execute $PowerShell -Argument $Arguments",
+    "  $Trigger = New-ScheduledTaskTrigger -AtLogOn",
+    "  $UserId = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name",
+    "  $Principal = New-ScheduledTaskPrincipal -UserId $UserId -LogonType Interactive -RunLevel Limited",
+    "  Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Force -ErrorAction Stop | Out-Null",
+    "  Start-ScheduledTask -TaskName $TaskName -ErrorAction Stop",
+    "  Write-Host 'DevAgent Hub scheduled task installed and started at http://127.0.0.1:3000.'",
+    "} catch {",
+    "  Write-Warning \"Scheduled Task installation failed: $($_.Exception.Message)\"",
+    "  Write-Warning 'Using current-user Startup shortcut fallback instead.'",
+    "  Install-StartupShortcut",
+    "}",
     "",
   ].join("\n");
 }
@@ -763,7 +824,10 @@ function buildWindowsTaskUninstallScript() {
     "  Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue",
     "  Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false",
     "}",
-    "Write-Host 'DevAgent Hub scheduled task removed.'",
+    "$StartupDir = [Environment]::GetFolderPath('Startup')",
+    "Remove-Item -LiteralPath (Join-Path $StartupDir 'DevAgent Hub.lnk') -ErrorAction SilentlyContinue",
+    "Remove-Item -LiteralPath (Join-Path $StartupDir 'DevAgent Hub.cmd') -ErrorAction SilentlyContinue",
+    "Write-Host 'DevAgent Hub scheduled task/startup shortcut removed.'",
     "",
   ].join("\n");
 }
@@ -853,9 +917,14 @@ async function buildWarnings(settings) {
   }
 
   if (settings.pullLocalModels && selectedOllamaModelNames(settings).length > 0) {
-    const ollama = await runCommand(ollamaCommand(), ["--version"]);
-    if (ollama.error) {
+    const command = availableOllamaCommand();
+    if (!command) {
       warnings.push("Ollama is not available in PATH. Local model pull will be skipped as a non-fatal installer step.");
+    } else {
+      const ollama = await runCommand(command, ["--version"]);
+      if (ollama.error) {
+        warnings.push("Ollama is not available in PATH. Local model pull will be skipped as a non-fatal installer step.");
+      }
     }
   }
 
@@ -864,12 +933,14 @@ async function buildWarnings(settings) {
 
 function buildOllamaPullSteps(settings) {
   if (!settings.pullLocalModels) return [];
+  const command = availableOllamaCommand();
+  if (!command) return [];
 
   return selectedOllamaModelNames(settings).map((modelName) => ({
     id: `ollama-pull-${modelName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`,
     label: `Pull Ollama model ${modelName} (optional)`,
     cwd: settings.installPath,
-    command: ollamaCommand(),
+    command,
     args: ["pull", modelName],
     optional: true,
     timeoutMs: 1800000,

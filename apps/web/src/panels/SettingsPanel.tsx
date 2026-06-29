@@ -1,7 +1,14 @@
 import { Cloud, Cpu, Download, HardDrive, Loader2, ShieldCheck, SlidersHorizontal, TestTube2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ProgressBar } from "../components/ProgressBar";
-import { addCloudModel, getLocalModelDownload, getModelCatalog, startLocalModelDownload } from "../api/models";
+import {
+  addCloudModel,
+  getLocalModelDownload,
+  getModelCatalog,
+  listHuggingFaceFiles,
+  searchModels,
+  startLocalModelDownload,
+} from "../api/models";
 import type {
   AddCloudModelRequest,
   AgentModel,
@@ -11,6 +18,7 @@ import type {
   LocalModelSource,
   ModelCatalogResponse,
   ModelDownloadState,
+  ModelSearchResponse,
 } from "../types";
 import { PanelHeader } from "../components/PanelHeader";
 import { IntegrationCards } from "../components/IntegrationCard";
@@ -38,9 +46,13 @@ export function SettingsPanel({
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [localSource, setLocalSource] = useState<LocalModelSource>("ollama");
   const [selectedLocalModelId, setSelectedLocalModelId] = useState("ollama-qwen25-coder-7b");
+  const [modelSearchQuery, setModelSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<ModelSearchResponse | null>(null);
+  const [isSearchingModels, setIsSearchingModels] = useState(false);
   const [hfRepoId, setHfRepoId] = useState("");
   const [hfFilename, setHfFilename] = useState("");
   const [hfDisplayName, setHfDisplayName] = useState("");
+  const [hfFiles, setHfFiles] = useState<string[]>([]);
   const [downloadState, setDownloadState] = useState<ModelDownloadState | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
@@ -75,8 +87,9 @@ export function SettingsPanel({
     () => catalog?.localModels.filter((model) => model.source === localSource) ?? [],
     [catalog, localSource],
   );
+  const displayedLocalModels = searchResults?.source === localSource ? searchResults.models : localModels;
 
-  const selectedLocalModel = localModels.find((model) => model.id === selectedLocalModelId) ?? localModels[0];
+  const selectedLocalModel = displayedLocalModels.find((model) => model.id === selectedLocalModelId) ?? displayedLocalModels[0];
   const selectedLocalModelAlreadyAvailable = Boolean(
     selectedLocalModel && config.models.some((model) => model.id === selectedLocalModel.id),
   );
@@ -95,11 +108,11 @@ export function SettingsPanel({
     (localSource !== "huggingface" || (hfRepoId.trim().length > 0 && hfFilename.trim().length > 0));
 
   useEffect(() => {
-    if (localModels.length === 0) return;
-    if (!localModels.some((model) => model.id === selectedLocalModelId)) {
-      setSelectedLocalModelId(localModels[0].id);
+    if (displayedLocalModels.length === 0) return;
+    if (!displayedLocalModels.some((model) => model.id === selectedLocalModelId)) {
+      setSelectedLocalModelId(displayedLocalModels[0].id);
     }
-  }, [localModels, selectedLocalModelId]);
+  }, [displayedLocalModels, selectedLocalModelId]);
 
   useEffect(() => {
     if (!downloadState || ["completed", "failed", "cancelled"].includes(downloadState.status)) return;
@@ -154,6 +167,7 @@ export function SettingsPanel({
       const state = await startLocalModelDownload({
         modelId: selectedLocalModel.id,
         source: localSource,
+        modelName: localSource === "ollama" ? selectedLocalModel.modelName || selectedLocalModel.name || modelSearchQuery.trim() : undefined,
         repoId: localSource === "huggingface" ? hfRepoId.trim() : undefined,
         filename: localSource === "huggingface" ? hfFilename.trim() : undefined,
         displayName: localSource === "huggingface" ? hfDisplayName.trim() : undefined,
@@ -162,6 +176,48 @@ export function SettingsPanel({
     } catch (caught) {
       setIsDownloading(false);
       setSettingsNotice(caught instanceof Error ? caught.message : "Model download failed.");
+    }
+  }
+
+  async function handleSearchModels() {
+    setIsSearchingModels(true);
+    setSettingsNotice(null);
+    try {
+      const result = await searchModels(localSource, modelSearchQuery.trim());
+      setSearchResults(result);
+      const first = result.models[0];
+      if (first) {
+        setSelectedLocalModelId(first.id);
+        if (localSource === "huggingface" && first.repoId) {
+          setHfRepoId(first.repoId);
+          await loadHuggingFaceFiles(first.repoId);
+        }
+      }
+    } catch (caught) {
+      setSettingsNotice(caught instanceof Error ? caught.message : "Model search failed.");
+    } finally {
+      setIsSearchingModels(false);
+    }
+  }
+
+  async function handleSelectLocalModel(modelId: string) {
+    setSelectedLocalModelId(modelId);
+    const model = displayedLocalModels.find((item) => item.id === modelId);
+    if (localSource === "huggingface" && model?.repoId) {
+      setHfRepoId(model.repoId);
+      await loadHuggingFaceFiles(model.repoId);
+    }
+  }
+
+  async function loadHuggingFaceFiles(repoId: string) {
+    if (!repoId.trim()) return;
+    try {
+      const result = await listHuggingFaceFiles(repoId.trim());
+      setHfFiles(result.files);
+      setHfFilename(result.files[0] ?? "");
+    } catch (caught) {
+      setHfFiles([]);
+      setSettingsNotice(caught instanceof Error ? caught.message : "Could not load Hugging Face files.");
     }
   }
 
@@ -216,21 +272,40 @@ export function SettingsPanel({
               <span>{t("localModelSource")}</span>
               <select
                 value={localSource}
-                onChange={(event) => setLocalSource(event.target.value as LocalModelSource)}
+                onChange={(event) => {
+                  setLocalSource(event.target.value as LocalModelSource);
+                  setSearchResults(null);
+                  setModelSearchQuery("");
+                }}
               >
                 <option value="ollama">{t("ollamaSource")}</option>
                 <option value="huggingface">{t("huggingfaceSource")}</option>
               </select>
             </label>
             <label className="field">
+              <span>{t("modelSearch")}</span>
+              <input
+                value={modelSearchQuery}
+                onChange={(event) => setModelSearchQuery(event.target.value)}
+                placeholder={localSource === "ollama" ? "qwen2.5-coder:7b, mistral, llama" : "qwen coder gguf, deepseek coder"}
+              />
+            </label>
+            <div className="field action-field">
+              <span>&nbsp;</span>
+              <button className="secondary-button" onClick={() => void handleSearchModels()} disabled={isSearchingModels}>
+                {isSearchingModels ? <Loader2 className="spin" size={16} /> : <Download size={16} />}
+                {t("searchModels")}
+              </button>
+            </div>
+            <label className="field">
               <span>{t("localModel")}</span>
               <select
                 value={selectedLocalModel?.id ?? ""}
-                onChange={(event) => setSelectedLocalModelId(event.target.value)}
+                onChange={(event) => void handleSelectLocalModel(event.target.value)}
               >
-                {localModels.map((model) => (
+                {displayedLocalModels.map((model) => (
                   <option key={model.id} value={model.id}>
-                    {model.name} · {model.provider}
+                    {model.name} · {model.provider}{model.installed ? " · installed" : ""}
                   </option>
                 ))}
               </select>
@@ -252,11 +327,24 @@ export function SettingsPanel({
               <div className="settings-grid compact-grid">
                 <label className="field">
                   <span>{t("huggingFaceRepo")}</span>
-                  <input value={hfRepoId} onChange={(event) => setHfRepoId(event.target.value)} placeholder="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF" />
+                  <input
+                    value={hfRepoId}
+                    onChange={(event) => setHfRepoId(event.target.value)}
+                    onBlur={() => void loadHuggingFaceFiles(hfRepoId)}
+                    placeholder="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
+                  />
                 </label>
                 <label className="field">
                   <span>{t("huggingFaceFilename")}</span>
-                  <input value={hfFilename} onChange={(event) => setHfFilename(event.target.value)} placeholder="model-q4_k_m.gguf" />
+                  {hfFiles.length > 0 ? (
+                    <select value={hfFilename} onChange={(event) => setHfFilename(event.target.value)}>
+                      {hfFiles.map((file) => (
+                        <option key={file} value={file}>{file}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input value={hfFilename} onChange={(event) => setHfFilename(event.target.value)} placeholder="model-q4_k_m.gguf" />
+                  )}
                 </label>
                 <label className="field">
                   <span>{t("huggingFaceDisplayName")}</span>

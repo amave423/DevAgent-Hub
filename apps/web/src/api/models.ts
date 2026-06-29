@@ -1,15 +1,17 @@
 import type {
   AddCloudModelRequest,
   AgentsConfig,
+  LocalModelSource,
+  ModelFileListResponse,
   ModelCatalogResponse,
   ModelDownloadRequest,
   ModelDownloadState,
+  ModelSearchResponse,
 } from "../types";
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+import { apiBaseUrl } from "./base";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${apiBaseUrl()}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -27,6 +29,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function getModelCatalog(): Promise<ModelCatalogResponse> {
   return request<ModelCatalogResponse>("/api/models/catalog");
+}
+
+export function searchModels(source: LocalModelSource, query: string): Promise<ModelSearchResponse> {
+  return request<ModelSearchResponse>(`/api/models/search?source=${encodeURIComponent(source)}&q=${encodeURIComponent(query)}`);
+}
+
+export function listHuggingFaceFiles(repoId: string): Promise<ModelFileListResponse> {
+  return request<ModelFileListResponse>(`/api/models/huggingface/files?repo_id=${encodeURIComponent(repoId)}`);
 }
 
 export function startLocalModelDownload(payload: ModelDownloadRequest): Promise<ModelDownloadState> {

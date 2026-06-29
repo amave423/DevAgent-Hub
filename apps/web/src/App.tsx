@@ -108,7 +108,7 @@ export function App() {
   const handleStartAndSync = async () => {
     await handleStartOpenVSCode();
     if (workspaceStatus?.openVsCode.url) {
-      patchSettings({ openVsCodeUrl: workspaceStatus.openVsCode.url });
+      patchSettings({ openVsCodeUrl: workspaceStatus.openVsCode.url.startsWith("/ide") ? "" : workspaceStatus.openVsCode.url });
     }
   };
 

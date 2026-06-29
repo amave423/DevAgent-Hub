@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+import { websocketBaseUrl } from "./base";
 
 export interface TerminalSocket {
   send(data: string): void;
@@ -10,11 +10,7 @@ export interface TerminalSocket {
 }
 
 export function connectTerminal(): TerminalSocket {
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const host = API_BASE_URL
-    ? API_BASE_URL.replace(/^https?:\/\//, "").replace(/\/$/, "")
-    : `${window.location.hostname}:${window.location.port || (window.location.protocol === "https:" ? "443" : "80")}`;
-  const url = `${protocol}//${host}/api/terminal/ws`;
+  const url = `${websocketBaseUrl()}/api/terminal/ws`;
 
   const ws = new WebSocket(url);
   const socket: TerminalSocket = {

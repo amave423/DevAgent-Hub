@@ -5,7 +5,9 @@ import json
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+import httpx
+import websockets
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -22,6 +24,8 @@ from .models import (
     ModelCatalogResponse,
     ModelDownloadRequest,
     ModelDownloadState,
+    ModelFileListResponse,
+    ModelSearchResponse,
     RunAgentsRequest,
     RunAgentsResponse,
     SetGitRemoteRequest,
@@ -140,6 +144,22 @@ async def stream_task_logs(task_id: str) -> StreamingResponse:
 @app.get("/api/models/catalog", response_model=ModelCatalogResponse)
 async def get_model_catalog() -> ModelCatalogResponse:
     return model_manager.catalog()
+
+
+@app.get("/api/models/search", response_model=ModelSearchResponse)
+async def search_models(source: str, q: str = "", limit: int = 25) -> ModelSearchResponse:
+    try:
+        return model_manager.search(source, q, limit=max(1, min(limit, 50)))
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/api/models/huggingface/files", response_model=ModelFileListResponse)
+async def list_huggingface_files(repo_id: str) -> ModelFileListResponse:
+    try:
+        return model_manager.huggingface_files(repo_id)
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.post("/api/models/local/download", response_model=ModelDownloadState)
@@ -264,6 +284,83 @@ async def install_openvscode() -> WorkspaceActionResponse:
 
 
 # ---------------------------------------------------------------------------
+# OpenVSCode same-origin proxy
+# ---------------------------------------------------------------------------
+
+@app.api_route("/ide/{full_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
+async def proxy_openvscode_http(full_path: str, request: Request) -> Response:
+    target_base = openvscode_manager.target_url()
+    if not target_base:
+        raise HTTPException(status_code=404, detail="OpenVSCode Server is not running")
+
+    target_url = f"{target_base}/{full_path}"
+    if request.url.query:
+        target_url = f"{target_url}?{request.url.query}"
+
+    headers = proxy_headers(dict(request.headers), target_base)
+    body = await request.body()
+    async with httpx.AsyncClient(follow_redirects=False, timeout=None, trust_env=False) as client:
+        upstream = await client.request(request.method, target_url, headers=headers, content=body)
+
+    content = upstream.content
+    content_type = upstream.headers.get("content-type", "")
+    if should_rewrite_openvscode_body(content_type):
+        content = rewrite_openvscode_body(content, content_type)
+
+    excluded_headers = {"connection", "content-encoding", "transfer-encoding", "keep-alive"}
+    if should_rewrite_openvscode_body(content_type):
+        excluded_headers.add("content-length")
+
+    response_headers = {
+        key: rewrite_proxy_header(key, value, target_base)
+        for key, value in upstream.headers.items()
+        if key.lower() not in excluded_headers
+    }
+    return Response(content=content, status_code=upstream.status_code, headers=response_headers)
+
+
+@app.websocket("/ide/{full_path:path}")
+async def proxy_openvscode_websocket(ws: WebSocket, full_path: str) -> None:
+    target_base = openvscode_manager.target_url()
+    if not target_base:
+        await ws.close(code=1011)
+        return
+
+    query = str(ws.url.query)
+    target_url = target_base.replace("http://", "ws://").replace("https://", "wss://")
+    target_url = f"{target_url}/{full_path}"
+    if query:
+        target_url = f"{target_url}?{query}"
+
+    await ws.accept()
+    try:
+        try:
+            upstream_context = websockets.connect(target_url, additional_headers={"Origin": target_base})
+        except TypeError:
+            upstream_context = websockets.connect(target_url, extra_headers={"Origin": target_base})
+
+        async with upstream_context as upstream:
+            async def client_to_upstream() -> None:
+                while True:
+                    message = await ws.receive()
+                    if "text" in message:
+                        await upstream.send(message["text"])
+                    elif "bytes" in message:
+                        await upstream.send(message["bytes"])
+
+            async def upstream_to_client() -> None:
+                async for message in upstream:
+                    if isinstance(message, bytes):
+                        await ws.send_bytes(message)
+                    else:
+                        await ws.send_text(message)
+
+            await asyncio.gather(client_to_upstream(), upstream_to_client())
+    except Exception:
+        await ws.close()
+
+
+# ---------------------------------------------------------------------------
 # Git
 # ---------------------------------------------------------------------------
 
@@ -317,6 +414,46 @@ async def create_github_pull_request(request: GitHubPullRequestRequest) -> Works
 
 def sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def proxy_headers(headers: dict[str, str], target_base: str) -> dict[str, str]:
+    target = httpx.URL(target_base)
+    ignored = {"host", "connection", "content-length", "accept-encoding"}
+    result = {key: value for key, value in headers.items() if key.lower() not in ignored}
+    result["host"] = target.netloc.decode() if isinstance(target.netloc, bytes) else str(target.netloc)
+    result["origin"] = target_base
+    return result
+
+
+def rewrite_proxy_header(key: str, value: str, target_base: str) -> str:
+    if key.lower() == "location" and value.startswith(target_base):
+        return value.replace(target_base, "/ide", 1)
+    return value
+
+
+def should_rewrite_openvscode_body(content_type: str) -> bool:
+    return any(
+        marker in content_type.lower()
+        for marker in ("text/html", "text/css", "javascript", "application/json")
+    )
+
+
+def rewrite_openvscode_body(content: bytes, content_type: str) -> bytes:
+    text = content.decode("utf-8", errors="replace")
+    replacements = {
+        'href="/': 'href="/ide/',
+        'src="/': 'src="/ide/',
+        'action="/': 'action="/ide/',
+        'url(/': 'url(/ide/',
+        '"webview/': '"ide/webview/',
+        '"/static/': '"/ide/static/',
+        "'/static/": "'/ide/static/",
+        '"/vscode/': '"/ide/vscode/',
+        "'/vscode/": "'/ide/vscode/",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text.encode("utf-8")
 
 
 def maybe_mount_frontend() -> None:

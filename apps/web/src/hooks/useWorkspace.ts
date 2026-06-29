@@ -15,7 +15,7 @@ export function useWorkspace(settings: DevHubSettings | null) {
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null);
   const [isStartingEditor, setIsStartingEditor] = useState(false);
 
-  const effectiveOpenVsCodeUrl = settings?.openVsCodeUrl || workspaceStatus?.openVsCode.url || "";
+  const effectiveOpenVsCodeUrl = resolveOpenVsCodeUrl(settings?.openVsCodeUrl || "", workspaceStatus);
 
   const integrationStatuses = useMemo<IntegrationStatus[]>(
     () => {
@@ -142,4 +142,25 @@ export function useWorkspace(settings: DevHubSettings | null) {
     handleInstallOpenVSCode,
     runWorkspaceAction,
   };
+}
+
+function resolveOpenVsCodeUrl(settingsUrl: string, workspaceStatus: WorkspaceStatus | null): string {
+  if (workspaceStatus?.openVsCode.running && workspaceStatus.openVsCode.url) {
+    return workspaceStatus.openVsCode.url;
+  }
+
+  if (settingsUrl && !isLoopbackEditorUrl(settingsUrl)) {
+    return settingsUrl;
+  }
+
+  return workspaceStatus?.openVsCode.url || settingsUrl || "";
+}
+
+function isLoopbackEditorUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return ["127.0.0.1", "localhost", "::1", "[::1]"].includes(url.hostname);
+  } catch {
+    return false;
+  }
 }

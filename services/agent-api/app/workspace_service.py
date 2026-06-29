@@ -4,8 +4,10 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Sequence
@@ -158,9 +160,10 @@ class OpenVSCodeManager:
         self.last_command: str | None = os.getenv("OPENVSCODE_COMMAND")
 
     def status(self) -> OpenVSCodeStatus:
-        running = self.process is not None and self.process.poll() is None
+        running = self._is_running()
         command = self.last_command if running else detect_openvscode_command(self.workspace_root) or self.last_command
-        url = self.last_url if running or self.last_url else os.getenv("OPENVSCODE_URL")
+        direct_url = self._active_url() or os.getenv("OPENVSCODE_URL")
+        url = "/ide/" if running and direct_url else direct_url
         return OpenVSCodeStatus(
             configured=bool(command or url),
             running=running,
@@ -170,6 +173,34 @@ class OpenVSCodeManager:
             workspacePath=str(self.workspace_root),
             message=build_openvscode_message(command, running, url),
         )
+
+    def target_url(self) -> str | None:
+        active_url = self._active_url()
+        if active_url:
+            return active_url.rstrip("/")
+        url = os.getenv("OPENVSCODE_URL")
+        return url.rstrip("/") if url else None
+
+    def _is_running(self) -> bool:
+        process_running = self.process is not None and self.process.poll() is None
+        if process_running:
+            return True
+        if self.last_url:
+            return is_http_alive(self.last_url)
+        default_url = "http://127.0.0.1:3001"
+        if is_http_alive(default_url):
+            self.last_url = default_url
+            return True
+        return False
+
+    def _active_url(self) -> str | None:
+        if self.last_url and is_http_alive(self.last_url):
+            return self.last_url
+        default_url = "http://127.0.0.1:3001"
+        if is_http_alive(default_url):
+            self.last_url = default_url
+            return default_url
+        return None
 
     def start(self, request: StartOpenVSCodeRequest) -> OpenVSCodeStatus:
         if self.process is not None and self.process.poll() is None:
@@ -343,6 +374,17 @@ def build_openvscode_message(command: str | None, running: bool, url: str | None
     if url:
         return "OpenVSCode URL is configured externally."
     return "OpenVSCode Server is not configured yet."
+
+
+def is_http_alive(url: str) -> bool:
+    try:
+        parsed = urllib.parse.urlparse(url)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        with socket.create_connection((host, port), timeout=1.5):
+            return True
+    except Exception:
+        return False
 
 
 def run_process(args: Sequence[str], *, cwd: Path, check: bool = True, timeout: int = 120) -> subprocess.CompletedProcess[str]:

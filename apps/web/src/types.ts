@@ -46,6 +46,9 @@ export interface LocalModelCatalogItem {
   repoId?: string | null;
   filename?: string | null;
   runnable: boolean;
+  installed?: boolean;
+  sizeBytes?: number | null;
+  details?: string | null;
 }
 
 export interface CloudProviderPreset {
@@ -65,9 +68,20 @@ export interface ModelCatalogResponse {
 export interface ModelDownloadRequest {
   modelId: string;
   source?: LocalModelSource | null;
+  modelName?: string | null;
   repoId?: string | null;
   filename?: string | null;
   displayName?: string | null;
+}
+
+export interface ModelSearchResponse {
+  source: LocalModelSource;
+  models: LocalModelCatalogItem[];
+}
+
+export interface ModelFileListResponse {
+  repoId: string;
+  files: string[];
 }
 
 export interface ModelDownloadState {

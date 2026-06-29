@@ -1,12 +1,11 @@
 import type { AgentLogEvent, AgentsConfig, RunAgentsResponse, TaskState } from "../types";
+import { apiBaseUrl } from "./base";
 
 // Re-export TaskState for convenience
 export type { TaskState };
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
-
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${apiBaseUrl()}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -62,7 +61,7 @@ export function subscribeToLogs(
     onError: (error: Error) => void;
   },
 ): EventSource {
-  const source = new EventSource(`${API_BASE_URL}/api/agents/logs/${taskId}`);
+  const source = new EventSource(`${apiBaseUrl()}/api/agents/logs/${taskId}`);
 
   source.addEventListener("log", (event) => {
     handlers.onLog(JSON.parse((event as MessageEvent).data) as AgentLogEvent);

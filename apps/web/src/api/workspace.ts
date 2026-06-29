@@ -7,11 +7,10 @@ import type {
   WorkspaceActionResponse,
   WorkspaceStatus,
 } from "../types";
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+import { apiBaseUrl } from "./base";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${apiBaseUrl()}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",

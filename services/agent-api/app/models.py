@@ -53,6 +53,9 @@ class LocalModelCatalogItem(BaseModel):
     repoId: str | None = None
     filename: str | None = None
     runnable: bool = True
+    installed: bool = False
+    sizeBytes: int | None = None
+    details: str | None = None
 
 
 class CloudProviderPreset(BaseModel):
@@ -72,9 +75,20 @@ class ModelCatalogResponse(BaseModel):
 class ModelDownloadRequest(BaseModel):
     modelId: str = Field(min_length=2)
     source: LocalModelSource | None = None
+    modelName: str | None = None
     repoId: str | None = None
     filename: str | None = None
     displayName: str | None = None
+
+
+class ModelSearchResponse(BaseModel):
+    source: LocalModelSource
+    models: list[LocalModelCatalogItem]
+
+
+class ModelFileListResponse(BaseModel):
+    repoId: str
+    files: list[str]
 
 
 class ModelDownloadState(BaseModel):
