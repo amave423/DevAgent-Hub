@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import time
 from typing import Any, Protocol, runtime_checkable
@@ -11,10 +10,8 @@ from urllib.parse import urlparse, urlunparse
 
 import httpx
 
+from .models import LLMCallResult, LLMUsage
 
-# ---------------------------------------------------------------------------
-# Protocol
-# ---------------------------------------------------------------------------
 
 @runtime_checkable
 class LLMProvider(Protocol):
@@ -28,12 +25,8 @@ class LLMProvider(Protocol):
         temperature: float = 0.7,
         max_tokens: int = 4096,
         **kwargs: Any,
-    ) -> str: ...
+    ) -> LLMCallResult: ...
 
-
-# ---------------------------------------------------------------------------
-# Ollama provider
-# ---------------------------------------------------------------------------
 
 class OllamaProvider:
     """Calls the local Ollama HTTP API."""
@@ -53,7 +46,8 @@ class OllamaProvider:
         temperature: float = 0.7,
         max_tokens: int = 4096,
         **kwargs: Any,
-    ) -> str:
+    ) -> LLMCallResult:
+        started = time.perf_counter()
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -63,18 +57,35 @@ class OllamaProvider:
                 "num_predict": max_tokens,
             },
         }
-        response = await self._client.post(
-            f"{self.base_url}/api/chat",
-            json=payload,
-        )
+        response = await self._client.post(f"{self.base_url}/api/chat", json=payload)
         response.raise_for_status()
         body = response.json()
-        return str(body.get("message", {}).get("content", ""))
+        prompt_tokens = int(body.get("prompt_eval_count") or 0) or None
+        completion_tokens = int(body.get("eval_count") or 0) or None
+        total_tokens = (
+            (prompt_tokens or 0) + (completion_tokens or 0)
+            if prompt_tokens is not None or completion_tokens is not None
+            else None
+        )
+        usage = None
+        if total_tokens is not None:
+            usage = LLMUsage(
+                promptTokens=prompt_tokens,
+                completionTokens=completion_tokens,
+                totalTokens=total_tokens,
+            )
+        return LLMCallResult(
+            text=str(body.get("message", {}).get("content", "")),
+            provider="ollama",
+            requestedModel=model,
+            resolvedModel=str(body.get("model") or model),
+            baseUrl=self.base_url,
+            usage=usage,
+            finishReason=str(body.get("done_reason") or "") or None,
+            latencyMs=round((time.perf_counter() - started) * 1000),
+            rawUsageAvailable=usage is not None,
+        )
 
-
-# ---------------------------------------------------------------------------
-# OpenAI-compatible provider (also works with OpenRouter & custom endpoints)
-# ---------------------------------------------------------------------------
 
 class OpenAIProvider:
     """Calls any OpenAI-compatible chat-completions endpoint."""
@@ -83,15 +94,16 @@ class OpenAIProvider:
         self,
         api_key: str | None = None,
         base_url: str | None = None,
+        provider_id: str = "openai-compatible",
     ) -> None:
-        from openai import AsyncOpenAI  # lazily imported so mock works without it
+        from openai import AsyncOpenAI
 
         resolved_key = api_key or os.getenv("AGENT_STUDIO_API_KEY", "")
-        resolved_url = base_url  # may be None — the SDK uses its default
-
+        self.base_url = base_url
+        self.provider_id = provider_id
         self._client = AsyncOpenAI(
             api_key=resolved_key or "unused",
-            base_url=resolved_url,
+            base_url=base_url,
         )
 
     async def chat(
@@ -102,7 +114,8 @@ class OpenAIProvider:
         temperature: float = 0.7,
         max_tokens: int = 4096,
         **kwargs: Any,
-    ) -> str:
+    ) -> LLMCallResult:
+        started = time.perf_counter()
         response = await self._client.chat.completions.create(
             model=model,
             messages=messages,  # type: ignore[arg-type]
@@ -110,12 +123,19 @@ class OpenAIProvider:
             max_tokens=max_tokens,
         )
         choice = response.choices[0] if response.choices else None
-        return str(choice.message.content) if choice and choice.message.content else ""
+        usage = usage_from_openai_response(getattr(response, "usage", None))
+        return LLMCallResult(
+            text=str(choice.message.content) if choice and choice.message.content else "",
+            provider=self.provider_id,
+            requestedModel=model,
+            resolvedModel=str(getattr(response, "model", "") or model),
+            baseUrl=self.base_url,
+            usage=usage,
+            finishReason=str(getattr(choice, "finish_reason", "") or "") if choice else None,
+            latencyMs=round((time.perf_counter() - started) * 1000),
+            rawUsageAvailable=usage is not None,
+        )
 
-
-# ---------------------------------------------------------------------------
-# Mock provider (deterministic simulation)
-# ---------------------------------------------------------------------------
 
 class MockProvider:
     """Simulates LLM calls without any external service."""
@@ -128,29 +148,26 @@ class MockProvider:
         temperature: float = 0.7,
         max_tokens: int = 4096,
         **kwargs: Any,
-    ) -> str:
+    ) -> LLMCallResult:
+        started = time.perf_counter()
         await asyncio.sleep(0.3)
-        last_user = next(
-            (m["content"] for m in reversed(messages) if m["role"] == "user"),
-            "",
-        )
+        last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
         compact = " ".join(last_user.strip().split())
         if len(compact) > 260:
             compact = compact[:257] + "..."
-        return f"[mock:{model}] {compact}"
+        return LLMCallResult(
+            text=f"[mock:{model}] {compact}",
+            provider="mock",
+            requestedModel=model,
+            resolvedModel=model,
+            usage=None,
+            finishReason="mock",
+            latencyMs=round((time.perf_counter() - started) * 1000),
+            rawUsageAvailable=False,
+        )
 
-
-# ---------------------------------------------------------------------------
-# Provider factory
-# ---------------------------------------------------------------------------
 
 def get_provider(provider_id: str, model: dict[str, Any] | None = None) -> LLMProvider:
-    """Return the appropriate provider based on *provider_id*.
-
-    Supported provider IDs: ``ollama``, ``openai``, ``openrouter``, ``mock``.
-    ``openrouter`` is treated as an OpenAI-compatible provider with
-    ``base_url`` pointing to OpenRouter's API.
-    """
     if provider_id == "mock":
         return MockProvider()
 
@@ -158,7 +175,6 @@ def get_provider(provider_id: str, model: dict[str, Any] | None = None) -> LLMPr
         base_url = model.get("baseUrl") if model else None
         return OllamaProvider(base_url=base_url)
 
-    # openai, openrouter, and any custom OpenAI-compatible endpoint
     base_url = None
     api_key = None
 
@@ -167,7 +183,6 @@ def get_provider(provider_id: str, model: dict[str, Any] | None = None) -> LLMPr
     elif provider_id == "openrouter":
         base_url = "https://openrouter.ai/api/v1"
 
-    # API key resolution: model-specific env → generic env → empty
     if provider_id == "openrouter":
         api_key = (
             os.getenv("AGENT_STUDIO_OPENROUTER_API_KEY")
@@ -186,7 +201,26 @@ def get_provider(provider_id: str, model: dict[str, Any] | None = None) -> LLMPr
         api_key_env = str(model.get("apiKeyEnv") or "") if model else ""
         api_key = (os.getenv(api_key_env) if api_key_env else "") or os.getenv("AGENT_STUDIO_API_KEY") or ""
 
-    return OpenAIProvider(api_key=api_key, base_url=base_url)
+    return OpenAIProvider(api_key=api_key, base_url=base_url, provider_id=provider_id)
+
+
+def usage_from_openai_response(raw_usage: Any) -> LLMUsage | None:
+    if raw_usage is None:
+        return None
+    prompt = getattr(raw_usage, "prompt_tokens", None)
+    completion = getattr(raw_usage, "completion_tokens", None)
+    total = getattr(raw_usage, "total_tokens", None)
+    if isinstance(raw_usage, dict):
+        prompt = raw_usage.get("prompt_tokens", prompt)
+        completion = raw_usage.get("completion_tokens", completion)
+        total = raw_usage.get("total_tokens", total)
+    if prompt is None and completion is None and total is None:
+        return None
+    return LLMUsage(
+        promptTokens=int(prompt) if prompt is not None else None,
+        completionTokens=int(completion) if completion is not None else None,
+        totalTokens=int(total) if total is not None else None,
+    )
 
 
 def normalize_ollama_base_url(raw_url: str) -> str:

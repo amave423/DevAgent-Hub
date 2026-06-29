@@ -12,17 +12,26 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from .chat_store import ChatStore
 from .config_store import ConfigStore
 from .model_manager import ModelManager
 from .models import (
     AddCloudModelRequest,
     ActionDecisionResponse,
     AgentsConfig,
+    ChatCreateRequest,
+    ChatMessage,
+    ChatMessageRequest,
+    ChatRunRequest,
+    ChatSession,
+    ChatSummary,
     CloudModelTestRequest,
     CloudModelTestResponse,
     GitCommitRequest,
     GitHubCreateRepoRequest,
     GitHubPullRequestRequest,
+    GitHubTokenRequest,
+    GitHubTokenTestResponse,
     GitPushRequest,
     ModelCatalogResponse,
     ModelDownloadRequest,
@@ -39,23 +48,28 @@ from .models import (
     TaskStatus,
     WorkspaceActionResponse,
     WorkspaceStatus,
+    WebSearchRequest,
+    WebSearchResponse,
 )
 from .runtime_settings import ActionRegistry, RuntimeSettingsStore
 from .task_runner import TERMINAL_STATUSES, TaskRegistry
 from .terminal import TerminalManager
+from .web_search import WebSearchService
 from .workspace_service import GitHubService, OpenVSCodeManager, WorkspaceService
 
 
 app = FastAPI(title="DevAgent Hub API", version="0.2.0")
 config_store = ConfigStore()
-task_registry = TaskRegistry()
 workspace_service = WorkspaceService()
+chat_store = ChatStore(workspace_service.root)
+task_registry = TaskRegistry(completion_handler=chat_store.complete_task)
 model_manager = ModelManager(config_store, workspace_service.root)
 openvscode_manager = OpenVSCodeManager(workspace_service.root)
 github_service = GitHubService(workspace_service)
 terminal_manager = TerminalManager(workspace_service.root)
 runtime_settings_store = RuntimeSettingsStore(workspace_service.root)
 action_registry = ActionRegistry()
+web_search_service = WebSearchService()
 
 app.add_middleware(
     CORSMiddleware,
@@ -93,6 +107,118 @@ async def startup() -> None:
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Chats
+# ---------------------------------------------------------------------------
+
+@app.get("/api/chats", response_model=list[ChatSummary])
+async def list_chats() -> list[ChatSummary]:
+    return chat_store.list()
+
+
+@app.post("/api/chats", response_model=ChatSession)
+async def create_chat(request: ChatCreateRequest) -> ChatSession:
+    return chat_store.create(request.title)
+
+
+@app.get("/api/chats/{chat_id}", response_model=ChatSession)
+async def get_chat(chat_id: str) -> ChatSession:
+    try:
+        return chat_store.get(chat_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Chat not found") from exc
+
+
+@app.post("/api/chats/{chat_id}/messages", response_model=ChatMessage)
+async def add_chat_message(chat_id: str, request: ChatMessageRequest) -> ChatMessage:
+    try:
+        return chat_store.add_message(
+            chat_id,
+            role=request.role,
+            content=request.content,
+            attachment_ids=request.attachmentIds,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Chat not found") from exc
+
+
+@app.post("/api/chats/{chat_id}/attachments")
+async def upload_chat_attachment(chat_id: str, request: Request, filename: str = "attachment"):
+    try:
+        data = await request.body()
+        if len(data) > 5_000_000:
+            raise HTTPException(status_code=413, detail="Attachment is too large. Max size is 5 MB.")
+        return chat_store.save_attachment(
+            chat_id,
+            filename or "attachment",
+            request.headers.get("content-type") or "application/octet-stream",
+            data,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Chat not found") from exc
+
+
+@app.post("/api/chats/{chat_id}/run", response_model=RunAgentsResponse)
+async def run_chat(chat_id: str, request: ChatRunRequest) -> RunAgentsResponse:
+    try:
+        chat_store.get(chat_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Chat not found") from exc
+
+    config = config_store.load()
+    selected_agents = [agent for agent in config.agents if agent.enabled]
+    if request.agentIds:
+        allowed = set(request.agentIds)
+        selected_agents = [agent for agent in selected_agents if agent.id in allowed]
+
+    attachment_context = chat_store.attachment_context(chat_id, request.attachmentIds)
+    search_context = ""
+    should_search = request.webSearch or should_auto_search(request.content, runtime_settings_store.load())
+    if should_search:
+        try:
+            search_response = await web_search_service.search(
+                request.content,
+                base_url=runtime_settings_store.load().webSearchBaseUrl,
+            )
+            search_context = format_search_context(search_response)
+            chat_store.add_message(
+                chat_id,
+                role="tool",
+                content=search_context or "Web search returned no results.",
+                metadata={"tool": "web_search", "response": search_response.model_dump(mode="json")},
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    task_parts = [request.content]
+    if attachment_context:
+        task_parts.append("Attached files:\n" + attachment_context)
+    if search_context:
+        task_parts.append("Web search results:\n" + search_context)
+    task_input = "\n\n".join(task_parts)
+
+    run_request = RunAgentsRequest(
+        task=task_input,
+        agents=selected_agents,
+        modelOverrides={agent.id: agent.modelId for agent in selected_agents},
+        mode=request.mode,
+        actionPolicy=request.actionPolicy,
+        chatId=chat_id,
+        attachmentIds=request.attachmentIds,
+        webSearch=should_search,
+    )
+    state = await task_registry.create(run_request, config)
+    chat_store.add_message(
+        chat_id,
+        role="user",
+        content=request.content,
+        attachment_ids=request.attachmentIds,
+        task_id=state.taskId,
+        status=state.status,
+    )
+    return RunAgentsResponse(taskId=state.taskId, status=TaskStatus.queued)
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +317,17 @@ async def search_models(source: str, q: str = "", limit: int = 25) -> ModelSearc
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@app.get("/api/models/ollama/search", response_model=ModelSearchResponse)
+async def search_ollama_models(q: str = "", page: int = 1, limit: int = 25) -> ModelSearchResponse:
+    try:
+        # The current adapter returns the best available page from Ollama search/fallback.
+        # Page is accepted for API compatibility and future server-side pagination.
+        _ = page
+        return model_manager.search("ollama", q, limit=max(1, min(limit, 50)))
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @app.get("/api/models/huggingface/files", response_model=ModelFileListResponse)
 async def list_huggingface_files(repo_id: str) -> ModelFileListResponse:
     try:
@@ -250,6 +387,23 @@ async def add_cloud_model(request: AddCloudModelRequest) -> AgentsConfig:
 async def test_cloud_model(request: CloudModelTestRequest) -> CloudModelTestResponse:
     try:
         return await model_manager.test_cloud_model(request)
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Tools
+# ---------------------------------------------------------------------------
+
+@app.post("/api/tools/web-search", response_model=WebSearchResponse)
+async def web_search(request: WebSearchRequest) -> WebSearchResponse:
+    try:
+        settings = runtime_settings_store.load()
+        return await web_search_service.search(
+            request.query,
+            limit=request.limit,
+            base_url=settings.webSearchBaseUrl,
+        )
     except Exception as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -516,6 +670,30 @@ async def push_git_changes(request: GitPushRequest) -> WorkspaceActionResponse:
 # GitHub
 # ---------------------------------------------------------------------------
 
+@app.post("/api/github/token", response_model=GitHubTokenTestResponse)
+async def save_github_token(request: GitHubTokenRequest) -> GitHubTokenTestResponse:
+    try:
+        return github_service.save_token(request.token)
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/github/test", response_model=GitHubTokenTestResponse)
+async def test_github_token() -> GitHubTokenTestResponse:
+    try:
+        return github_service.test_token()
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.delete("/api/github/token", response_model=GitHubTokenTestResponse)
+async def delete_github_token() -> GitHubTokenTestResponse:
+    try:
+        return github_service.delete_token()
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @app.post("/api/workspace/github/repos", response_model=WorkspaceActionResponse)
 async def create_github_repo(request: GitHubCreateRepoRequest) -> WorkspaceActionResponse:
     try:
@@ -538,6 +716,33 @@ async def create_github_pull_request(request: GitHubPullRequestRequest) -> Works
 
 def sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def should_auto_search(content: str, settings: RuntimeSettings) -> bool:
+    if not settings.webSearchEnabled:
+        return False
+    text = content.lower()
+    markers = (
+        "найди",
+        "поиск",
+        "интернет",
+        "сегодня",
+        "актуаль",
+        "latest",
+        "current",
+        "today",
+        "search",
+        "web",
+    )
+    return any(marker in text for marker in markers)
+
+
+def format_search_context(response: WebSearchResponse) -> str:
+    lines = [f"Search query: {response.query}", f"Provider: {response.provider}"]
+    for index, item in enumerate(response.results, start=1):
+        snippet = f" - {item.snippet}" if item.snippet else ""
+        lines.append(f"{index}. {item.title}\n   {item.url}{snippet}")
+    return "\n".join(lines)
 
 
 def requires_auth(request: Request) -> bool:

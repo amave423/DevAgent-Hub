@@ -44,8 +44,19 @@ def main() -> int:
     try:
         health = wait_for_json(opener, f'{base_url}/health')
         config = get_json(opener, f'{base_url}/api/agents/config')
+        config['runtime']['runnerMode'] = 'mock'
+        config = post_json(opener, f'{base_url}/api/agents/config', config)
         catalog = get_json(opener, f'{base_url}/api/models/catalog')
         workspace = get_json(opener, f'{base_url}/api/workspace/status')
+        chat = post_json(opener, f'{base_url}/api/chats', {'title': 'Smoke chat'})
+        run = post_json(opener, f"{base_url}/api/chats/{chat['id']}/run", {
+            'content': 'Say hello from the smoke test.',
+            'attachmentIds': [],
+            'agentIds': [config['agents'][0]['id']],
+            'webSearch': False,
+        })
+        task = wait_for_task(opener, base_url, run['taskId'])
+        saved_chat = get_json(opener, f"{base_url}/api/chats/{chat['id']}")
 
         assert health['status'] == 'ok'
         assert len(config['models']) > 0
@@ -56,6 +67,10 @@ def main() -> int:
         assert 'git' in workspace
         assert 'openVsCode' in workspace
         assert 'github' in workspace
+        assert task['status'] == 'completed'
+        assert len(task['llmCalls']) >= 1
+        assert task['llmCalls'][0]['provider'] == 'mock'
+        assert [message['role'] for message in saved_chat['messages']][-2:] == ['user', 'assistant']
 
         if os.getenv('SERVE_FRONTEND', '').lower() in {'1', 'true', 'yes'}:
             html = get_text(opener, f'{base_url}/')
@@ -65,6 +80,7 @@ def main() -> int:
         print(f"models={len(config['models'])}")
         print(f"agents={len(config['agents'])}")
         print(f"catalog_local_models={len(catalog['localModels'])}")
+        print(f"chat_messages={len(saved_chat['messages'])}")
         print(f"workspace={workspace['rootPath']}")
         print(f"git_repository={workspace['git']['isRepository']}")
         return 0
@@ -95,6 +111,35 @@ def get_json(
 ) -> dict[str, Any]:
     with opener.open(url, timeout=timeout) as response:
         return json.loads(response.read().decode('utf-8'))
+
+
+def post_json(
+    opener: urllib.request.OpenerDirector,
+    url: str,
+    payload: dict[str, Any],
+    timeout: float = 5,
+) -> dict[str, Any]:
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode('utf-8'),
+        headers={'Content-Type': 'application/json'},
+        method='POST',
+    )
+    with opener.open(request, timeout=timeout) as response:
+        return json.loads(response.read().decode('utf-8'))
+
+
+def wait_for_task(
+    opener: urllib.request.OpenerDirector,
+    base_url: str,
+    task_id: str,
+) -> dict[str, Any]:
+    for _ in range(100):
+        task = get_json(opener, f'{base_url}/api/agents/status/{task_id}', timeout=2)
+        if task['status'] in {'completed', 'failed', 'cancelled'}:
+            return task
+        time.sleep(0.05)
+    raise RuntimeError(f'Task did not finish: {task_id}')
 
 
 def get_text(

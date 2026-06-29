@@ -1,4 +1,4 @@
-import { BrainCircuit } from "lucide-react";
+import { ArrowDown, ArrowUp, BrainCircuit, Eraser } from "lucide-react";
 import type { AgentDefinition, AgentsConfig } from "../types";
 import type { CopyKey } from "../i18n/ru";
 
@@ -32,14 +32,14 @@ export function AgentsPanel({
   function addAgent() {
     onChange([
       ...agents,
-	        {
-	          id: `agent-${Date.now()}`,
-	        name: t("newAgentName"),
-	          enabled: true,
-	          order: agents.length + 1,
-	          modelId: config.models[0]?.id ?? "",
-	        systemPrompt: t("newAgentPrompt"),
-	      },
+      {
+        id: `agent-${Date.now()}`,
+        name: t("newAgentName"),
+        enabled: true,
+        order: agents.length + 1,
+        modelId: config.models[0]?.id ?? "",
+        systemPrompt: "",
+      },
     ]);
   }
 
@@ -48,7 +48,7 @@ export function AgentsPanel({
       <div className="section-heading">
         <div>
           <h2>{t("agentsTitle")}</h2>
-	          <span>{t("agentsSubtitle")}</span>
+          <span>{t("agentsSubtitle")}</span>
         </div>
         <button className="secondary-button" onClick={addAgent}>
           <BrainCircuit size={16} />
@@ -71,27 +71,32 @@ export function AgentsPanel({
                 </label>
                 <div>
                   <input value={agent.name} onChange={(event) => patchAgent(agent.id, { name: event.target.value })} />
-	                  <small>{model?.name ?? t("modelNotSet")}</small>
+                  <small>{model?.name ?? t("modelNotSet")}</small>
                 </div>
               </header>
               <select value={agent.modelId} onChange={(event) => patchAgent(agent.id, { modelId: event.target.value })}>
                 {config.models.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.name} · {item.provider}
+                    {item.name} / {item.provider}
                   </option>
                 ))}
               </select>
+              <button className="secondary-button" type="button" onClick={() => patchAgent(agent.id, { systemPrompt: "" })}>
+                <Eraser size={16} />
+                {t("noCustomPrompt")}
+              </button>
               <textarea
                 value={agent.systemPrompt}
                 onChange={(event) => patchAgent(agent.id, { systemPrompt: event.target.value })}
+                placeholder={t("newAgentPrompt")}
                 rows={6}
               />
               <footer>
                 <button className="icon-button" onClick={() => moveAgent(agent.id, -1)} disabled={index === 0}>
-                  ↑
+                  <ArrowUp size={16} />
                 </button>
                 <button className="icon-button" onClick={() => moveAgent(agent.id, 1)} disabled={index === agents.length - 1}>
-                  ↓
+                  <ArrowDown size={16} />
                 </button>
                 <button className="danger-button" onClick={() => onChange(agents.filter((item) => item.id !== agent.id))}>
                   {t("remove")}

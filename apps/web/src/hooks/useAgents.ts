@@ -7,6 +7,7 @@ import {
   saveAgentsConfig,
   subscribeToLogs,
 } from "../api/agents";
+import { runChat } from "../api/chats";
 import { getRuntimeSettings, saveRuntimeSettings } from "../api/runtime";
 import type {
   AgentDefinition,
@@ -18,6 +19,13 @@ import type {
   ModelPurposeId,
   TaskState,
 } from "../types";
+
+interface RunOptions {
+  chatId?: string;
+  attachmentIds?: string[];
+  agentIds?: string[];
+  webSearch?: boolean;
+}
 
 const SETTINGS_KEY = "devagent-hub.settings.v1";
 
@@ -85,7 +93,12 @@ export function useAgents() {
               actionPolicy: runtime.actionPolicy,
             },
           };
-          loadedSettings = { ...loadedSettings, theme: runtime.theme };
+          loadedSettings = {
+            ...loadedSettings,
+            theme: runtime.theme,
+            webSearchEnabled: runtime.webSearchEnabled,
+            webSearchBaseUrl: runtime.webSearchBaseUrl,
+          };
         } catch {
           // Runtime settings are optional during local dev boot.
         }
@@ -151,6 +164,12 @@ export function useAgents() {
       if (patch.theme) {
         void saveRuntimeSettings({ theme: patch.theme }).catch((caught: Error) => setError(caught.message));
       }
+      if (patch.webSearchEnabled !== undefined || patch.webSearchBaseUrl !== undefined) {
+        void saveRuntimeSettings({
+          webSearchEnabled: patch.webSearchEnabled,
+          webSearchBaseUrl: patch.webSearchBaseUrl,
+        }).catch((caught: Error) => setError(caught.message));
+      }
     },
     [],
   );
@@ -175,7 +194,7 @@ export function useAgents() {
     }
   }
 
-  async function handleRun(taskText: string) {
+  async function handleRun(taskText: string, options: RunOptions = {}) {
     if (!config || !settings || !taskText.trim()) return;
 
     eventSourceRef.current?.close();
@@ -185,8 +204,17 @@ export function useAgents() {
     setTaskState(null);
 
     try {
-      const runtimeConfig = normalizeConfig(applyPurposeModels(config, settings));
-      const response = await runAgents(taskText.trim(), runtimeConfig);
+      const runtimeConfig = normalizeConfig(config);
+      const response = options.chatId
+        ? await runChat(options.chatId, {
+            content: taskText.trim(),
+            attachmentIds: options.attachmentIds ?? [],
+            agentIds: options.agentIds ?? enabledAgents.map((agent) => agent.id),
+            mode: runtimeConfig.runtime.agentMode,
+            actionPolicy: runtimeConfig.runtime.actionPolicy,
+            webSearch: Boolean(options.webSearch),
+          })
+        : await runAgents(taskText.trim(), runtimeConfig);
       const initialState = await getTaskStatus(response.taskId);
       setTaskState(initialState);
       eventSourceRef.current = subscribeToLogs(response.taskId, {
@@ -241,6 +269,20 @@ export function useAgents() {
     patchConfig((current) => applyPurposeModels(current, settings));
   }
 
+  const patchRuntime = useCallback(
+    (patch: Partial<AgentsConfig["runtime"]>) => {
+      patchConfig((current) => ({
+        ...current,
+        runtime: { ...current.runtime, ...patch },
+      }));
+      void saveRuntimeSettings({
+        agentMode: patch.agentMode,
+        actionPolicy: patch.actionPolicy,
+      }).catch((caught: Error) => setError(caught.message));
+    },
+    [patchConfig],
+  );
+
   return {
     config,
     settings,
@@ -258,6 +300,7 @@ export function useAgents() {
     handleCancel,
     resetRun,
     applyPurposes,
+    patchRuntime,
     setError,
   };
 }
@@ -285,9 +328,11 @@ function defaultSettings(config: AgentsConfig): DevHubSettings {
     theme: "dark",
     openVsCodeUrl: "",
     previewUrl: "http://127.0.0.1:5173",
-    githubOwner: "",
-    githubDefaultVisibility: "private",
-    modelPurposes: mergePurposes(config),
+      githubOwner: "",
+      githubDefaultVisibility: "private",
+      modelPurposes: mergePurposes(config),
+      webSearchEnabled: false,
+      webSearchBaseUrl: "",
   };
 }
 

@@ -128,6 +128,35 @@ LOCAL_MODEL_CATALOG = [
     ),
 ]
 
+OLLAMA_POPULAR_MODELS = [
+    "qwen2.5-coder:7b",
+    "qwen2.5-coder:14b",
+    "qwen2.5-coder:32b",
+    "qwen3:8b",
+    "qwen3:14b",
+    "deepseek-coder:6.7b",
+    "deepseek-coder:33b",
+    "deepseek-r1:7b",
+    "deepseek-r1:14b",
+    "llama3.2:3b",
+    "llama3.1:8b",
+    "llama3.1:70b",
+    "codellama:7b-code",
+    "codellama:13b-code",
+    "codellama:34b-code",
+    "mistral:7b",
+    "mixtral:8x7b",
+    "gemma3:4b",
+    "gemma3:12b",
+    "phi4:latest",
+    "phi4-mini:latest",
+    "starcoder2:7b",
+    "starcoder2:15b",
+    "devstral:latest",
+    "granite-code:8b",
+    "granite-code:20b",
+]
+
 
 CLOUD_PROVIDER_PRESETS = [
     CloudProviderPreset(
@@ -176,14 +205,18 @@ class ModelManager:
             models = merge_ollama_installed_models(LOCAL_MODEL_CATALOG, ollama_installed_models())
             needle = query.strip().lower()
             if needle:
-                models = [
+                local_matches = [
                     model for model in models
                     if needle in model.id.lower()
                     or needle in model.name.lower()
                     or needle in (model.modelName or "").lower()
                 ]
+                library_matches = ollama_library_search(query, limit)
+                models = dedupe_catalog_items([*local_matches, *library_matches], limit)
                 if not any((model.modelName or model.id).lower() == needle for model in models):
                     models.insert(0, ollama_custom_item(query.strip()))
+            else:
+                models = dedupe_catalog_items([*models, *ollama_popular_items()], limit)
             return ModelSearchResponse(source=normalized_source, models=models[:limit])
 
         return ModelSearchResponse(source=normalized_source, models=huggingface_search(query, limit))
@@ -269,6 +302,7 @@ class ModelManager:
             name=request.name.strip(),
             provider=provider,
             kind=ModelKind.cloud,
+            modelName=(request.modelName or request.name).strip(),
             baseUrl=base_url,
             apiKeyEnv=api_key_env,
             description=request.description or f"Custom cloud model via {provider}.",
@@ -281,9 +315,9 @@ class ModelManager:
         api_key_env = (request.apiKeyEnv or default_api_key_env(provider)).strip()
         api_key = (request.apiKey or "").strip() or (os.getenv(api_key_env) if api_key_env else "") or ""
         base_url = (request.baseUrl or "").strip() or provider_base_url(provider) or None
-        client = OpenAIProvider(api_key=api_key, base_url=base_url)
-        output = await client.chat(
-            model=request.name.strip(),
+        client = OpenAIProvider(api_key=api_key, base_url=base_url, provider_id=provider)
+        result = await client.chat(
+            model=(request.modelName or request.name).strip(),
             messages=[
                 {"role": "system", "content": "Reply with a short health check."},
                 {"role": "user", "content": "Say OK if this model endpoint is reachable."},
@@ -291,7 +325,12 @@ class ModelManager:
             temperature=0,
             max_tokens=64,
         )
-        return CloudModelTestResponse(ok=True, message="Cloud model test succeeded.", output=output[:1000])
+        return CloudModelTestResponse(
+            ok=True,
+            message="Cloud model test succeeded.",
+            output=result.text[:1000],
+            result=result,
+        )
 
     async def _run_download(
         self,
@@ -359,6 +398,7 @@ class ModelManager:
             name=model_name,
             provider="ollama",
             kind=ModelKind.local,
+            modelName=model_name,
             baseUrl=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
             description=item.description,
             requirements=item.requirements,
@@ -462,6 +502,7 @@ class ModelManager:
             name=display_name,
             provider="huggingface-local",
             kind=ModelKind.local,
+            modelName=display_name,
             baseUrl=str(local_path),
             description="Model file downloaded from Hugging Face Hub. A local runtime integration is required to run it.",
             requirements=item.requirements,
@@ -659,6 +700,51 @@ def ollama_custom_item(model_name: str) -> LocalModelCatalogItem:
         description="Custom Ollama model name. DevAgent Hub will run `ollama pull` for it.",
         requirements=ModelRequirements(ramGb=0, diskGb=0),
     )
+
+
+def ollama_popular_items() -> list[LocalModelCatalogItem]:
+    return [ollama_custom_item(model_name) for model_name in OLLAMA_POPULAR_MODELS]
+
+
+def ollama_library_search(query: str, limit: int) -> list[LocalModelCatalogItem]:
+    needle = query.strip()
+    if not needle:
+        return ollama_popular_items()[:limit]
+    try:
+        encoded = urllib.parse.urlencode({"q": needle})
+        request = urllib.request.Request(
+            f"https://ollama.com/search?{encoded}",
+            headers={"User-Agent": "DevAgent-Hub"},
+            method="GET",
+        )
+        with urllib.request.urlopen(request, timeout=12) as response:
+            html = response.read().decode("utf-8", errors="replace")
+    except Exception:
+        return [
+            item for item in ollama_popular_items()
+            if needle.lower() in item.name.lower() or needle.lower() in (item.modelName or "").lower()
+        ][:limit]
+
+    names: list[str] = []
+    for match in re.finditer(r'href="/library/([^"/?#]+)', html):
+        name = urllib.parse.unquote(match.group(1)).strip()
+        if name and name not in names:
+            names.append(name)
+    return [ollama_custom_item(name) for name in names[:limit]]
+
+
+def dedupe_catalog_items(items: list[LocalModelCatalogItem], limit: int) -> list[LocalModelCatalogItem]:
+    seen: set[str] = set()
+    result = []
+    for item in items:
+        key = (item.modelName or item.name or item.id).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(item)
+        if len(result) >= limit:
+            break
+    return result
 
 
 def huggingface_search(query: str, limit: int) -> list[LocalModelCatalogItem]:

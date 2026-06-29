@@ -12,7 +12,6 @@ import {
   Loader2,
   MessageSquareText,
   Moon,
-  Play,
   RotateCcw,
   Settings2,
   ScrollText,
@@ -59,6 +58,12 @@ export function App() {
   );
   const autoStartEditorRef = useRef(false);
 
+  useEffect(() => {
+    if (taskText.includes("Р") || taskText.includes("С")) {
+      setTaskText("");
+    }
+  }, []);
+
   const {
     config,
     settings,
@@ -76,6 +81,7 @@ export function App() {
     handleCancel,
     resetRun,
     applyPurposes,
+    patchRuntime,
   } = useAgents();
 
   const {
@@ -114,7 +120,6 @@ export function App() {
   }, [handleStartOpenVSCode, isStartingEditor, workspaceStatus?.openVsCode.configured, workspaceStatus?.openVsCode.running]);
 
   const t = (key: CopyKey) => translate(language, key);
-  const onRun = () => handleRun(taskText);
 
   if (!config || !settings) {
     return (
@@ -183,10 +188,6 @@ export function App() {
             <button className="icon-button" title={t("reset")} onClick={resetRun}>
               <RotateCcw size={18} />
             </button>
-            <button className="primary-button" onClick={onRun} disabled={isRunning || enabledAgents.length === 0}>
-              {isRunning ? <Loader2 className="spin" size={16} /> : <Play size={16} />}
-              {t("run")}
-            </button>
           </div>
         </header>
 
@@ -204,9 +205,12 @@ export function App() {
                 taskState={taskState}
                 logs={logs}
                 isRunning={isRunning}
-                onRun={onRun}
+                onRun={handleRun}
                 onCancel={handleCancel}
                 t={t}
+                config={config}
+                settings={settings}
+                patchRuntime={patchRuntime}
               />
             )}
             {activeTab === "agents" && (
@@ -254,7 +258,6 @@ export function App() {
                 statuses={integrationStatuses}
                 patchSettings={patchSettings}
                 patchConfig={patchConfig}
-                applyPurposes={applyPurposes}
                 t={t}
               />
             )}

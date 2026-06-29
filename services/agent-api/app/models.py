@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -51,10 +51,29 @@ class AgentModel(BaseModel):
     name: str = Field(min_length=1)
     provider: str = Field(min_length=1)
     kind: ModelKind
+    modelName: str | None = None
     baseUrl: str | None = None
     apiKeyEnv: str | None = None
     description: str = ""
     requirements: ModelRequirements = Field(default_factory=lambda: ModelRequirements(ramGb=0, diskGb=0))
+
+
+class LLMUsage(BaseModel):
+    promptTokens: int | None = None
+    completionTokens: int | None = None
+    totalTokens: int | None = None
+
+
+class LLMCallResult(BaseModel):
+    text: str = ""
+    provider: str
+    requestedModel: str
+    resolvedModel: str | None = None
+    baseUrl: str | None = None
+    usage: LLMUsage | None = None
+    finishReason: str | None = None
+    latencyMs: int = Field(default=0, ge=0)
+    rawUsageAvailable: bool = False
 
 
 class LocalModelCatalogItem(BaseModel):
@@ -125,6 +144,7 @@ class ModelDownloadState(BaseModel):
 class AddCloudModelRequest(BaseModel):
     id: str | None = None
     name: str = Field(min_length=1)
+    modelName: str | None = None
     provider: str = Field(default="custom", min_length=2)
     baseUrl: str | None = None
     apiKeyEnv: str | None = None
@@ -134,6 +154,7 @@ class AddCloudModelRequest(BaseModel):
 
 class CloudModelTestRequest(BaseModel):
     name: str = Field(min_length=1)
+    modelName: str | None = None
     provider: str = Field(default="custom", min_length=2)
     baseUrl: str | None = None
     apiKeyEnv: str | None = None
@@ -144,6 +165,7 @@ class CloudModelTestResponse(BaseModel):
     ok: bool
     message: str
     output: str = ""
+    result: LLMCallResult | None = None
 
 
 class AgentDefinition(BaseModel):
@@ -152,7 +174,7 @@ class AgentDefinition(BaseModel):
     enabled: bool = True
     order: int = Field(ge=1)
     modelId: str
-    systemPrompt: str = Field(min_length=1)
+    systemPrompt: str = ""
 
 
 class RuntimeConfig(BaseModel):
@@ -178,6 +200,9 @@ class RunAgentsRequest(BaseModel):
     modelOverrides: dict[str, str] = Field(default_factory=dict)
     mode: AgentRunMode | None = None
     actionPolicy: ActionPolicy | None = None
+    chatId: str | None = None
+    attachmentIds: list[str] = Field(default_factory=list)
+    webSearch: bool = False
 
 
 class RunAgentsResponse(BaseModel):
@@ -195,6 +220,8 @@ class AgentLogEvent(BaseModel):
     phase: str
     message: str
     progress: int = Field(ge=0, le=100)
+    llm: LLMCallResult | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class TaskState(BaseModel):
@@ -209,6 +236,8 @@ class TaskState(BaseModel):
     activeAgentId: str | None = None
     mode: AgentRunMode = AgentRunMode.plan
     actionPolicy: ActionPolicy = ActionPolicy.confirm
+    chatId: str | None = None
+    llmCalls: list[LLMCallResult] = Field(default_factory=list)
 
 
 class RuntimeSettings(BaseModel):
@@ -221,12 +250,16 @@ class RuntimeSettings(BaseModel):
     authRequired: bool = False
     authTokenConfigured: bool = False
     urls: list[str] = Field(default_factory=list)
+    webSearchEnabled: bool = False
+    webSearchBaseUrl: str = ""
 
 
 class SaveRuntimeSettingsRequest(BaseModel):
     theme: Literal["dark", "light"] | None = None
     agentMode: AgentRunMode | None = None
     actionPolicy: ActionPolicy | None = None
+    webSearchEnabled: bool | None = None
+    webSearchBaseUrl: str | None = None
 
 
 class ActionStatus(str, Enum):
@@ -331,3 +364,87 @@ class WorkspaceActionResponse(BaseModel):
     message: str
     output: str = ""
     url: str | None = None
+
+
+class ChatAttachment(BaseModel):
+    id: str
+    name: str
+    path: str
+    contentType: str = "application/octet-stream"
+    size: int = Field(ge=0)
+    createdAt: datetime = Field(default_factory=utc_now)
+
+
+class ChatMessage(BaseModel):
+    id: str
+    role: Literal["user", "assistant", "agent", "tool", "system"]
+    content: str
+    createdAt: datetime = Field(default_factory=utc_now)
+    taskId: str | None = None
+    status: TaskStatus | None = None
+    attachments: list[ChatAttachment] = Field(default_factory=list)
+    llmCalls: list[LLMCallResult] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChatSession(BaseModel):
+    id: str
+    title: str
+    createdAt: datetime = Field(default_factory=utc_now)
+    updatedAt: datetime = Field(default_factory=utc_now)
+    messages: list[ChatMessage] = Field(default_factory=list)
+
+
+class ChatSummary(BaseModel):
+    id: str
+    title: str
+    createdAt: datetime
+    updatedAt: datetime
+    lastMessage: str = ""
+
+
+class ChatCreateRequest(BaseModel):
+    title: str | None = None
+
+
+class ChatMessageRequest(BaseModel):
+    role: Literal["user", "assistant", "agent", "tool", "system"] = "user"
+    content: str = Field(min_length=1)
+    attachmentIds: list[str] = Field(default_factory=list)
+
+
+class ChatRunRequest(BaseModel):
+    content: str = Field(min_length=1)
+    attachmentIds: list[str] = Field(default_factory=list)
+    mode: AgentRunMode | None = None
+    actionPolicy: ActionPolicy | None = None
+    agentIds: list[str] = Field(default_factory=list)
+    webSearch: bool = False
+
+
+class WebSearchRequest(BaseModel):
+    query: str = Field(min_length=1)
+    limit: int = Field(default=5, ge=1, le=10)
+
+
+class WebSearchResult(BaseModel):
+    title: str
+    url: str
+    snippet: str = ""
+
+
+class WebSearchResponse(BaseModel):
+    query: str
+    provider: str
+    results: list[WebSearchResult]
+
+
+class GitHubTokenRequest(BaseModel):
+    token: str = Field(min_length=1)
+
+
+class GitHubTokenTestResponse(BaseModel):
+    ok: bool
+    message: str
+    login: str | None = None
+    scopes: list[str] = Field(default_factory=list)

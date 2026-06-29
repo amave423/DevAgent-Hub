@@ -2,6 +2,7 @@ import type {
   GitCommitRequest,
   GitHubCreateRepoRequest,
   GitHubPullRequestRequest,
+  GitHubTokenTestResponse,
   GitPushRequest,
   StartOpenVSCodeRequest,
   WorkspaceActionResponse,
@@ -78,5 +79,25 @@ export function createGitHubPullRequest(payload: GitHubPullRequestRequest): Prom
   return request<WorkspaceActionResponse>("/api/workspace/github/pull-request", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function saveGitHubToken(token: string): Promise<GitHubTokenTestResponse> {
+  return request<GitHubTokenTestResponse>("/api/github/token", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
+}
+
+export function testGitHubToken(): Promise<GitHubTokenTestResponse> {
+  return request<GitHubTokenTestResponse>("/api/github/test", {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+export function deleteGitHubToken(): Promise<GitHubTokenTestResponse> {
+  return request<GitHubTokenTestResponse>("/api/github/token", {
+    method: "DELETE",
   });
 }

@@ -32,10 +32,29 @@ export interface AgentModel {
   name: string;
   provider: string;
   kind: ModelKind;
+  modelName?: string | null;
   baseUrl?: string | null;
   apiKeyEnv?: string | null;
   description: string;
   requirements: ModelRequirements;
+}
+
+export interface LLMUsage {
+  promptTokens?: number | null;
+  completionTokens?: number | null;
+  totalTokens?: number | null;
+}
+
+export interface LLMCallResult {
+  text: string;
+  provider: string;
+  requestedModel: string;
+  resolvedModel?: string | null;
+  baseUrl?: string | null;
+  usage?: LLMUsage | null;
+  finishReason?: string | null;
+  latencyMs: number;
+  rawUsageAvailable: boolean;
 }
 
 export interface LocalModelCatalogItem {
@@ -106,6 +125,7 @@ export interface ModelDownloadState {
 export interface AddCloudModelRequest {
   id?: string | null;
   name: string;
+  modelName?: string | null;
   provider: string;
   baseUrl?: string | null;
   apiKeyEnv?: string | null;
@@ -115,6 +135,7 @@ export interface AddCloudModelRequest {
 
 export interface CloudModelTestRequest {
   name: string;
+  modelName?: string | null;
   provider: string;
   baseUrl?: string | null;
   apiKeyEnv?: string | null;
@@ -125,6 +146,7 @@ export interface CloudModelTestResponse {
   ok: boolean;
   message: string;
   output: string;
+  result?: LLMCallResult | null;
 }
 
 export interface AgentDefinition {
@@ -170,6 +192,8 @@ export interface TaskState {
   activeAgentId?: string | null;
   mode: AgentRunMode;
   actionPolicy: ActionPolicy;
+  chatId?: string | null;
+  llmCalls: LLMCallResult[];
 }
 
 export interface AgentLogEvent {
@@ -182,6 +206,8 @@ export interface AgentLogEvent {
   phase: string;
   message: string;
   progress: number;
+  llm?: LLMCallResult | null;
+  metadata: Record<string, unknown>;
 }
 
 export interface ModelPurpose {
@@ -199,6 +225,8 @@ export interface DevHubSettings {
   githubOwner: string;
   githubDefaultVisibility: "private" | "public";
   modelPurposes: ModelPurpose[];
+  webSearchEnabled: boolean;
+  webSearchBaseUrl: string;
 }
 
 export interface RuntimeSettings {
@@ -211,6 +239,8 @@ export interface RuntimeSettings {
   authRequired: boolean;
   authTokenConfigured: boolean;
   urls: string[];
+  webSearchEnabled: boolean;
+  webSearchBaseUrl: string;
 }
 
 export interface IntegrationStatus {
@@ -269,6 +299,71 @@ export interface WorkspaceActionResponse {
   message: string;
   output: string;
   url?: string | null;
+}
+
+export interface ChatAttachment {
+  id: string;
+  name: string;
+  path: string;
+  contentType: string;
+  size: number;
+  createdAt: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant" | "agent" | "tool" | "system";
+  content: string;
+  createdAt: string;
+  taskId?: string | null;
+  status?: TaskStatus | null;
+  attachments: ChatAttachment[];
+  llmCalls: LLMCallResult[];
+  metadata: Record<string, unknown>;
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: ChatMessage[];
+}
+
+export interface ChatSummary {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  lastMessage: string;
+}
+
+export interface ChatRunRequest {
+  content: string;
+  attachmentIds: string[];
+  mode?: AgentRunMode | null;
+  actionPolicy?: ActionPolicy | null;
+  agentIds: string[];
+  webSearch: boolean;
+}
+
+export interface WebSearchResult {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+export interface WebSearchResponse {
+  query: string;
+  provider: string;
+  results: WebSearchResult[];
+}
+
+export interface GitHubTokenTestResponse {
+  ok: boolean;
+  message: string;
+  login?: string | null;
+  scopes: string[];
 }
 
 export interface GitHubCreateRepoRequest {

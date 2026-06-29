@@ -127,10 +127,7 @@ async function collectSettings(args, modelOptions, agentOptions, interactive) {
       base.cloudBaseUrl = await question(rl, "Custom cloud base URL (empty for provider default)", base.cloudBaseUrl);
     }
 
-    const customizeAgents = await yesNo(rl, "Choose model for each agent", true);
-    if (customizeAgents) {
-      base.agentModelAssignments = await promptAgentModels(rl, agentOptions, selectedModels, base.modelId);
-    }
+    base.agentModelAssignments = {};
 
     if (selectedModels.some((model) => model.provider === "ollama")) {
       base.pullLocalModels = await yesNo(

@@ -48,7 +48,7 @@ class RuntimeSettingsStore:
         urls = [f"http://127.0.0.1:{port}"]
         if external:
             urls.extend(f"http://{ip}:{port}" for ip in lan_ipv4_addresses())
-        return {
+        patch = {
             "externalAccess": external,
             "host": host,
             "port": port,
@@ -56,6 +56,11 @@ class RuntimeSettingsStore:
             "authTokenConfigured": token_configured,
             "urls": urls,
         }
+        searxng_url = os.getenv("DEVAGENT_SEARXNG_URL", "").strip()
+        if searxng_url:
+            patch["webSearchEnabled"] = True
+            patch["webSearchBaseUrl"] = searxng_url
+        return patch
 
 
 class ActionRegistry:

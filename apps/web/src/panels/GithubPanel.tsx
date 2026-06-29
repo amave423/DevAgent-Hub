@@ -1,5 +1,14 @@
 import { useMemo, useState } from "react";
-import { FileCode2, Github, RefreshCw, ShieldCheck } from "lucide-react";
+import { FileCode2, Github, KeyRound, Loader2, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
+import {
+  commitGitChanges,
+  createGitHubPullRequest,
+  createGitHubRepo,
+  deleteGitHubToken,
+  pushGitChanges,
+  saveGitHubToken,
+  testGitHubToken,
+} from "../api/workspace";
 import type { DevHubSettings, IntegrationStatus, WorkspaceActionResponse, WorkspaceStatus } from "../types";
 import { PanelHeader } from "../components/PanelHeader";
 import { Metric } from "../components/Metric";
@@ -28,7 +37,10 @@ export function GithubPanel({
   const [prTitle, setPrTitle] = useState("");
   const [prBody, setPrBody] = useState("");
   const [prHead, setPrHead] = useState("feature-branch");
+  const [tokenInput, setTokenInput] = useState("");
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
+  const [isAuthBusy, setIsAuthBusy] = useState(false);
   const changedFiles = useMemo(
     () => workspaceStatus?.git.changes.map(changedPath).filter(isNonEmptyString) ?? [],
     [workspaceStatus],
@@ -50,6 +62,21 @@ export function GithubPanel({
     }
   }
 
+  async function runAuthAction(action: () => Promise<{ message: string; login?: string | null }>) {
+    setIsAuthBusy(true);
+    setAuthNotice(null);
+    try {
+      const result = await action();
+      setAuthNotice(`${result.message}${result.login ? ` ${result.login}` : ""}`);
+      setTokenInput("");
+      onRefresh();
+    } catch (caught) {
+      setAuthNotice(caught instanceof Error ? caught.message : "GitHub auth action failed.");
+    } finally {
+      setIsAuthBusy(false);
+    }
+  }
+
   return (
     <div className="tab-panel github-panel">
       <PanelHeader
@@ -62,6 +89,39 @@ export function GithubPanel({
           </button>
         }
       />
+      <section className="github-auth-card">
+        <div>
+          <KeyRound size={18} />
+          <div>
+            <strong>{t("githubToken")}</strong>
+            <span>{workspaceStatus?.github.tokenConfigured ? t("configured") : t("missing")}</span>
+          </div>
+        </div>
+        <div className="github-auth-row">
+          <input
+            type="password"
+            value={tokenInput}
+            onChange={(event) => setTokenInput(event.target.value)}
+            placeholder="github_pat_..."
+          />
+          <button
+            className="secondary-button"
+            disabled={isAuthBusy || !tokenInput.trim()}
+            onClick={() => void runAuthAction(() => saveGitHubToken(tokenInput.trim()))}
+          >
+            {isAuthBusy ? <Loader2 className="spin" size={16} /> : <KeyRound size={16} />}
+            {t("saveToken")}
+          </button>
+          <button className="secondary-button" disabled={isAuthBusy} onClick={() => void runAuthAction(testGitHubToken)}>
+            {t("testToken")}
+          </button>
+          <button className="danger-button" disabled={isAuthBusy} onClick={() => void runAuthAction(deleteGitHubToken)}>
+            <Trash2 size={16} />
+            {t("deleteToken")}
+          </button>
+        </div>
+        {authNotice && <div className="notice-strip inline">{authNotice}</div>}
+      </section>
       <div className="settings-grid">
         <label className="field">
           <span>{t("owner")}</span>
@@ -109,14 +169,12 @@ export function GithubPanel({
             disabled={isBusy || !workspaceStatus?.github.tokenConfigured || !repoName.trim()}
             onClick={() =>
               void runAction(() =>
-                import("../api/workspace").then((m) =>
-                  m.createGitHubRepo({
-                    name: repoName.trim(),
-                    owner: settings.githubOwner.trim() || null,
-                    visibility: settings.githubDefaultVisibility,
-                    description: "Created by DevAgent Hub",
-                  }),
-                ),
+                createGitHubRepo({
+                  name: repoName.trim(),
+                  owner: settings.githubOwner.trim() || null,
+                  visibility: settings.githubDefaultVisibility,
+                  description: "Created by DevAgent Hub",
+                }),
               )
             }
           >
@@ -132,12 +190,10 @@ export function GithubPanel({
             disabled={isBusy || changedFiles.length === 0 || !commitMessage.trim()}
             onClick={() =>
               void runAction(() =>
-                import("../api/workspace").then((m) =>
-                  m.commitGitChanges({
-                    message: commitMessage.trim(),
-                    files: changedFiles,
-                  }),
-                ),
+                commitGitChanges({
+                  message: commitMessage.trim(),
+                  files: changedFiles,
+                }),
               )
             }
           >
@@ -153,12 +209,10 @@ export function GithubPanel({
             disabled={isBusy || !workspaceStatus?.git.isRepository || !workspaceStatus.git.branch}
             onClick={() =>
               void runAction(() =>
-                import("../api/workspace").then((m) =>
-                  m.pushGitChanges({
-                    branch: workspaceStatus?.git.branch,
-                    setUpstream: true,
-                  }),
-                ),
+                pushGitChanges({
+                  branch: workspaceStatus?.git.branch,
+                  setUpstream: true,
+                }),
               )
             }
           >
@@ -197,9 +251,8 @@ export function GithubPanel({
           disabled={isBusy || !workspaceStatus?.github.tokenConfigured || !prTitle.trim() || !workspaceStatus?.github.repository}
           onClick={() =>
             void runAction(async () => {
-              const m = await import("../api/workspace");
               const [owner, repo] = (workspaceStatus?.github.repository ?? "").split("/");
-              return m.createGitHubPullRequest({
+              return createGitHubPullRequest({
                 owner: owner ?? settings.githubOwner,
                 repository: repo ?? repoName,
                 title: prTitle.trim(),

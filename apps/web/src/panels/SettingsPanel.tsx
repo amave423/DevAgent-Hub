@@ -1,10 +1,9 @@
-import { CheckCircle2, Cloud, Cpu, Download, HardDrive, Loader2, RefreshCcw, ShieldCheck, SlidersHorizontal, TestTube2, Trash2 } from "lucide-react";
+import { CheckCircle2, Cloud, Cpu, Download, HardDrive, Loader2, RefreshCcw, ShieldCheck, TestTube2, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ProgressBar } from "../components/ProgressBar";
 import {
   addCloudModel,
   deleteLocalModel,
-  getLocalModelDownload,
   getModelCatalog,
   listHuggingFaceFiles,
   listLocalModelDownloads,
@@ -30,7 +29,6 @@ import type {
 import { PanelHeader } from "../components/PanelHeader";
 import { IntegrationCards } from "../components/IntegrationCard";
 import type { CopyKey } from "../i18n/ru";
-import type { ModelPurposeId } from "../types";
 
 export function SettingsPanel({
   config,
@@ -38,7 +36,6 @@ export function SettingsPanel({
   statuses,
   patchSettings,
   patchConfig,
-  applyPurposes,
   t,
 }: {
   config: AgentsConfig;
@@ -46,7 +43,6 @@ export function SettingsPanel({
   statuses: IntegrationStatus[];
   patchSettings: (patch: Partial<DevHubSettings>) => void;
   patchConfig: (updater: (current: AgentsConfig) => AgentsConfig) => void;
-  applyPurposes: () => void;
   t: (key: CopyKey) => string;
 }) {
   const [catalog, setCatalog] = useState<ModelCatalogResponse | null>(null);
@@ -62,11 +58,13 @@ export function SettingsPanel({
   const [hfFiles, setHfFiles] = useState<string[]>([]);
   const [downloads, setDownloads] = useState<ModelDownloadState[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isTestingCloudModel, setIsTestingCloudModel] = useState(false);
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
   const [cloudTestNotice, setCloudTestNotice] = useState<string | null>(null);
   const [cloudForm, setCloudForm] = useState<AddCloudModelRequest>({
     id: "",
     name: "",
+    modelName: "",
     provider: "custom",
     baseUrl: "",
     apiKeyEnv: "AGENT_STUDIO_API_KEY",
@@ -135,14 +133,6 @@ export function SettingsPanel({
     } catch (caught) {
       setSettingsNotice(caught instanceof Error ? caught.message : "Could not load downloads.");
     }
-  }
-
-  function patchPurpose(id: ModelPurposeId, modelId: string) {
-    patchSettings({
-      modelPurposes: settings.modelPurposes.map((purpose) =>
-        purpose.id === id ? { ...purpose, modelId } : purpose,
-      ),
-    });
   }
 
   function upsertModel(model: AgentModel) {
@@ -280,6 +270,7 @@ export function SettingsPanel({
         ...cloudForm,
         id: cloudForm.id?.trim() || undefined,
         name: cloudForm.name.trim(),
+        modelName: cloudForm.modelName?.trim() || cloudForm.name.trim(),
         provider: cloudForm.provider.trim() || "custom",
         baseUrl: cloudForm.baseUrl?.trim() || undefined,
         apiKeyEnv: cloudForm.apiKeyEnv?.trim() || undefined,
@@ -288,7 +279,7 @@ export function SettingsPanel({
       });
       patchConfig(() => saved);
       setSettingsNotice(t("cloudModelAdded"));
-      setCloudForm((current) => ({ ...current, id: "", name: "", apiKey: "", description: "" }));
+      setCloudForm((current) => ({ ...current, id: "", name: "", modelName: "", apiKey: "", description: "" }));
     } catch (caught) {
       setSettingsNotice(caught instanceof Error ? caught.message : "Cloud model was not added.");
     }
@@ -297,17 +288,24 @@ export function SettingsPanel({
   async function handleTestCloudModel() {
     if (!cloudForm.name.trim()) return;
     setCloudTestNotice(null);
+    setIsTestingCloudModel(true);
     try {
       const result = await testCloudModel({
         name: cloudForm.name.trim(),
+        modelName: cloudForm.modelName?.trim() || cloudForm.name.trim(),
         provider: cloudForm.provider.trim() || "custom",
         baseUrl: cloudForm.baseUrl?.trim() || undefined,
         apiKeyEnv: cloudForm.apiKeyEnv?.trim() || undefined,
         apiKey: cloudForm.apiKey?.trim() || undefined,
       });
-      setCloudTestNotice(`${result.message}${result.output ? `: ${result.output}` : ""}`);
+      const resolved = result.result?.resolvedModel || result.result?.requestedModel || cloudForm.name.trim();
+      const tokens = result.result?.usage?.totalTokens;
+      const tokenText = tokens == null ? t("tokensNotReturned") : `${tokens} ${t("tokens")}`;
+      setCloudTestNotice(`${result.message}: ${resolved}; ${tokenText}${result.output ? `; ${result.output}` : ""}`);
     } catch (caught) {
       setCloudTestNotice(caught instanceof Error ? caught.message : "Cloud model test failed.");
+    } finally {
+      setIsTestingCloudModel(false);
     }
   }
 
@@ -367,7 +365,7 @@ export function SettingsPanel({
             <div className="model-detail-row">
               <HardDrive size={18} />
               <span>
-                {selectedLocalModel.description} RAM {selectedLocalModel.requirements.ramGb}GB / disk {selectedLocalModel.requirements.diskGb}GB
+                {localizedModelDescription(selectedLocalModel.id, selectedLocalModel.description, settings.language)} RAM {selectedLocalModel.requirements.ramGb}GB / disk {selectedLocalModel.requirements.diskGb}GB
               </span>
               {selectedLocalModelAlreadyAvailable && <em>{t("modelAlreadyAvailable")}</em>}
             </div>
@@ -456,7 +454,11 @@ export function SettingsPanel({
             </label>
             <label className="field">
               <span>{t("cloudModelName")}</span>
-              <input value={cloudForm.name} onChange={(event) => updateCloudForm({ name: event.target.value })} placeholder="gpt-4o-mini, claude-sonnet, provider/model" />
+              <input value={cloudForm.name} onChange={(event) => updateCloudForm({ name: event.target.value })} placeholder="Claude Sonnet, GPT coder" />
+            </label>
+            <label className="field">
+              <span>{t("cloudModelActualName")}</span>
+              <input value={cloudForm.modelName ?? ""} onChange={(event) => updateCloudForm({ modelName: event.target.value })} placeholder="gpt-4o-mini, anthropic/claude-sonnet-4" />
             </label>
             <label className="field">
               <span>{t("customModelId")}</span>
@@ -476,40 +478,15 @@ export function SettingsPanel({
             </label>
           </div>
           <div className="inline-actions left">
-            <button className="secondary-button" onClick={() => void handleTestCloudModel()} disabled={!cloudForm.name.trim()}>
-              <TestTube2 size={16} />
-              {t("testModel")}
+            <button className="secondary-button" onClick={() => void handleTestCloudModel()} disabled={!cloudForm.name.trim() || isTestingCloudModel}>
+              {isTestingCloudModel ? <Loader2 className="spin" size={16} /> : <TestTube2 size={16} />}
+              {isTestingCloudModel ? t("testingModel") : t("testModel")}
             </button>
             <button className="secondary-button" onClick={() => void handleAddCloudModel()} disabled={!cloudForm.name.trim()}>
               <Cloud size={16} />
               {t("addCloudModel")}
             </button>
           </div>
-        </section>
-
-        <section>
-          <h3>{t("modelPurposes")}</h3>
-          <div className="purpose-list">
-            {settings.modelPurposes.map((purpose) => (
-              <label className="purpose-row" key={purpose.id}>
-                <div>
-                  <strong>{purpose.label}</strong>
-                  <span>{purpose.description}</span>
-                </div>
-                <select value={purpose.modelId} onChange={(event) => patchPurpose(purpose.id, event.target.value)}>
-                  {config.models.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.name} / {model.provider}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ))}
-          </div>
-          <button className="secondary-button" onClick={applyPurposes}>
-            <SlidersHorizontal size={16} />
-            {t("applyPurposes")}
-          </button>
         </section>
 
         <section>
@@ -558,6 +535,30 @@ export function SettingsPanel({
         </section>
 
         <section>
+          <h3>{t("webSearchSettings")}</h3>
+          <div className="settings-grid">
+            <label className="field">
+              <span>{t("webSearch")}</span>
+              <select
+                value={settings.webSearchEnabled ? "enabled" : "disabled"}
+                onChange={(event) => patchSettings({ webSearchEnabled: event.target.value === "enabled" })}
+              >
+                <option value="enabled">{t("connected")}</option>
+                <option value="disabled">{t("notConfigured")}</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>{t("webSearchBaseUrl")}</span>
+              <input
+                value={settings.webSearchBaseUrl}
+                onChange={(event) => patchSettings({ webSearchBaseUrl: event.target.value })}
+                placeholder="https://search.example.com"
+              />
+            </label>
+          </div>
+        </section>
+
+        <section>
           <h3>{t("guardrails")}</h3>
           <div className="guardrail-grid">
             <article>
@@ -585,4 +586,21 @@ export function SettingsPanel({
       </div>
     </div>
   );
+}
+
+function localizedModelDescription(id: string, fallback: string, language: DevHubSettings["language"]): string {
+  if (language !== "ru") return fallback;
+  const descriptions: Record<string, string> = {
+    "ollama-qwen25-coder-7b": "Рекомендуемая локальная модель для кода с хорошим балансом скорости и качества.",
+    "ollama-deepseek-coder-67b": "Сильная локальная модель для генерации и правки кода.",
+    "ollama-qwen25-coder-14b": "Более качественная локальная модель для кода, требует больше RAM.",
+    "ollama-codellama-7b": "Локальная модель семейства Code Llama для задач программирования.",
+    "ollama-codellama-13b": "Более крупный вариант Code Llama для сложных изменений кода.",
+    "ollama-llama32-3b": "Быстрая локальная модель для коротких задач, черновиков и планов.",
+    "ollama-llama31-8b": "Универсальная локальная модель для планирования и текстовых задач.",
+    "ollama-mistral-7b": "Быстрая универсальная локальная модель.",
+    "ollama-phi4": "Компактная reasoning-модель для легких агентских шагов.",
+    "huggingface-custom-file": "Скачивание конкретного файла модели из Hugging Face Hub.",
+  };
+  return descriptions[id] ?? fallback;
 }

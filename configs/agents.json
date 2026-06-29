@@ -3,117 +3,132 @@
   "models": [
     {
       "id": "ollama-qwen25-coder-7b",
-      "name": "qwen2.5-coder:7b",
+      "name": "Qwen2.5 Coder 7B",
+      "modelName": "qwen2.5-coder:7b",
       "provider": "ollama",
       "kind": "local",
       "baseUrl": "http://127.0.0.1:11434",
-      "description": "Хороший баланс скорости и качества для тестовых задач.",
+      "description": "Recommended local coding model with a good speed/quality balance.",
       "requirements": {
         "ramGb": 8,
         "diskGb": 5
       }
     },
     {
-      "id": "ollama-deepseek-coder-67b",
-      "name": "deepseek-coder:6.7b",
-      "provider": "ollama",
-      "kind": "local",
-      "baseUrl": "http://127.0.0.1:11434",
-      "description": "Сильная локальная модель для генерации кода.",
-      "requirements": {
-        "ramGb": 10,
-        "diskGb": 6
-      }
-    },
-    {
-      "id": "ollama-deepseek-coder-33b",
-      "name": "deepseek-coder:33b",
-      "provider": "ollama",
-      "kind": "local",
-      "baseUrl": "http://127.0.0.1:11434",
-      "description": "Максимальное качество среди локальных вариантов, требует больше ресурсов.",
-      "requirements": {
-        "ramGb": 24,
-        "diskGb": 20
-      }
-    },
-    {
       "id": "ollama-llama32-3b",
-      "name": "llama3.2:3b",
+      "name": "Llama 3.2 3B",
+      "modelName": "llama3.2:3b",
       "provider": "ollama",
       "kind": "local",
       "baseUrl": "http://127.0.0.1:11434",
-      "description": "Быстрая локальная модель для коротких и простых задач.",
+      "description": "Fast local model for short tasks, drafts and plans.",
       "requirements": {
         "ramGb": 4,
         "diskGb": 3
       }
     },
     {
+      "id": "ollama-deepseek-coder-67b",
+      "name": "DeepSeek Coder 6.7B",
+      "modelName": "deepseek-coder:6.7b",
+      "provider": "ollama",
+      "kind": "local",
+      "baseUrl": "http://127.0.0.1:11434",
+      "description": "Strong local model for code generation and edits.",
+      "requirements": {
+        "ramGb": 10,
+        "diskGb": 6
+      }
+    },
+    {
+      "id": "ollama-qwen25-coder-14b",
+      "name": "Qwen2.5 Coder 14B",
+      "modelName": "qwen2.5-coder:14b",
+      "provider": "ollama",
+      "kind": "local",
+      "baseUrl": "http://127.0.0.1:11434",
+      "description": "Higher quality local coding model, requires more RAM.",
+      "requirements": {
+        "ramGb": 16,
+        "diskGb": 9
+      }
+    },
+    {
+      "id": "ollama-codellama-7b",
+      "name": "Code Llama 7B",
+      "modelName": "codellama:7b-code",
+      "provider": "ollama",
+      "kind": "local",
+      "baseUrl": "http://127.0.0.1:11434",
+      "description": "Code-focused local model from the Code Llama family.",
+      "requirements": {
+        "ramGb": 8,
+        "diskGb": 4
+      }
+    },
+    {
+      "id": "ollama-llama31-8b",
+      "name": "Llama 3.1 8B",
+      "modelName": "llama3.1:8b",
+      "provider": "ollama",
+      "kind": "local",
+      "baseUrl": "http://127.0.0.1:11434",
+      "description": "General-purpose local model for planning and text tasks.",
+      "requirements": {
+        "ramGb": 8,
+        "diskGb": 5
+      }
+    },
+    {
+      "id": "ollama-mistral-7b",
+      "name": "Mistral 7B",
+      "modelName": "mistral:7b",
+      "provider": "ollama",
+      "kind": "local",
+      "baseUrl": "http://127.0.0.1:11434",
+      "description": "Fast general-purpose local model.",
+      "requirements": {
+        "ramGb": 8,
+        "diskGb": 4
+      }
+    },
+    {
       "id": "openrouter-auto",
-      "name": "openrouter/auto",
+      "name": "OpenRouter Auto",
+      "modelName": "openrouter/auto",
       "provider": "openrouter",
       "kind": "cloud",
       "baseUrl": "https://openrouter.ai/api/v1",
-      "description": "Облачный маршрутизатор моделей, удобен при блокировках прямых API.",
+      "apiKeyEnv": "AGENT_STUDIO_OPENROUTER_API_KEY",
+      "description": "OpenAI-compatible cloud model router.",
       "requirements": {
         "ramGb": 1,
-        "diskGb": 1
+        "diskGb": 0
       }
     },
     {
       "id": "openai-gpt-4o-mini",
-      "name": "gpt-4o-mini",
+      "name": "GPT-4o mini",
+      "modelName": "gpt-4o-mini",
       "provider": "openai",
       "kind": "cloud",
       "baseUrl": "https://api.openai.com/v1",
-      "description": "Облачная модель для быстрых агентских шагов.",
+      "apiKeyEnv": "AGENT_STUDIO_OPENAI_API_KEY",
+      "description": "Fast cloud model for agent steps.",
       "requirements": {
         "ramGb": 1,
-        "diskGb": 1
+        "diskGb": 0
       }
     }
   ],
   "agents": [
     {
-      "id": "generator",
-      "name": "Generator",
+      "id": "assistant",
+      "name": "Assistant",
       "enabled": true,
       "order": 1,
       "modelId": "ollama-qwen25-coder-7b",
-      "systemPrompt": "Ты генерируешь первый рабочий вариант решения. Давай конкретный план и код без лишних отступлений."
-    },
-    {
-      "id": "critic",
-      "name": "Critic",
-      "enabled": true,
-      "order": 2,
-      "modelId": "openrouter-auto",
-      "systemPrompt": "Ты ищешь дефекты, риски, несоответствия ТЗ и слабые места реализации."
-    },
-    {
-      "id": "optimizer",
-      "name": "Optimizer",
-      "enabled": true,
-      "order": 3,
-      "modelId": "ollama-deepseek-coder-67b",
-      "systemPrompt": "Ты улучшаешь архитектуру и код, сохраняя поведение и уменьшая сложность."
-    },
-    {
-      "id": "tester",
-      "name": "Tester",
-      "enabled": true,
-      "order": 4,
-      "modelId": "ollama-qwen25-coder-7b",
-      "systemPrompt": "Ты проверяешь результат, предлагаешь тесты и фиксируешь регрессии."
-    },
-    {
-      "id": "finalizer",
-      "name": "Finalizer",
-      "enabled": true,
-      "order": 5,
-      "modelId": "openai-gpt-4o-mini",
-      "systemPrompt": "Ты собираешь финальный ответ, патч или инструкции в аккуратный итог."
+      "systemPrompt": ""
     }
   ],
   "runtime": {

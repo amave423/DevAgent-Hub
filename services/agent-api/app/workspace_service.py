@@ -6,6 +6,7 @@ import re
 import shutil
 import socket
 import subprocess
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -17,6 +18,7 @@ from .models import (
     GitHubCreateRepoRequest,
     GitHubPullRequestRequest,
     GitHubStatus,
+    GitHubTokenTestResponse,
     GitPushRequest,
     GitStatus,
     OpenVSCodeStatus,
@@ -238,7 +240,6 @@ class OpenVSCodeManager:
 
     def install(self) -> WorkspaceActionResponse:
         """Install code-server into .tools/ if no browser editor is available."""
-        target_dir = self.workspace_root / ".tools" / "code-server"
         existing = detect_openvscode_command(self.workspace_root)
         if existing:
             return WorkspaceActionResponse(
@@ -247,13 +248,11 @@ class OpenVSCodeManager:
                 output=existing,
             )
 
-        target_dir.mkdir(parents=True, exist_ok=True)
-        npm_command = npm_install_command(self.workspace_root)
-        if not npm_command:
-            raise RuntimeError("npm was not found in PATH. Install Node.js 22 before installing the browser code editor.")
-
+        installer = self.workspace_root / "scripts" / "install_code_server.py"
+        if not installer.exists():
+            raise RuntimeError("code-server installer script was not found.")
         result = run_process(
-            [*npm_command, "install", "--prefix", str(target_dir), "code-server@4.117.0"],
+            [sys.executable, str(installer), "--workspace", str(self.workspace_root)],
             cwd=self.workspace_root,
             timeout=900,
         )
@@ -282,6 +281,33 @@ class OpenVSCodeManager:
 class GitHubService:
     def __init__(self, workspace: WorkspaceService) -> None:
         self.workspace = workspace
+
+    def save_token(self, token: str) -> GitHubTokenTestResponse:
+        clean_token = token.strip()
+        data = github_get(clean_token, "https://api.github.com/user")
+        set_secret(self.workspace.root, "GITHUB_TOKEN", clean_token)
+        os.environ["GITHUB_TOKEN"] = clean_token
+        return GitHubTokenTestResponse(
+            ok=True,
+            message="GitHub token saved.",
+            login=str(data.get("login") or "") or None,
+        )
+
+    def test_token(self) -> GitHubTokenTestResponse:
+        token = require_github_token()
+        data = github_get(token, "https://api.github.com/user")
+        return GitHubTokenTestResponse(
+            ok=True,
+            message="GitHub token works.",
+            login=str(data.get("login") or "") or None,
+        )
+
+    def delete_token(self) -> GitHubTokenTestResponse:
+        remove_secret(self.workspace.root, "GITHUB_TOKEN")
+        remove_secret(self.workspace.root, "GH_TOKEN")
+        os.environ.pop("GITHUB_TOKEN", None)
+        os.environ.pop("GH_TOKEN", None)
+        return GitHubTokenTestResponse(ok=True, message="GitHub token removed.")
 
     def create_repo(self, request: GitHubCreateRepoRequest) -> WorkspaceActionResponse:
         token = require_github_token()
@@ -423,7 +449,7 @@ def npm_install_command(workspace_root: Path) -> list[str] | None:
 
 
 def github_token() -> str | None:
-    return os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN")
+    return os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN") or read_secret(default_workspace_root(), "GITHUB_TOKEN") or read_secret(default_workspace_root(), "GH_TOKEN")
 
 
 def require_github_token() -> str:
@@ -485,3 +511,72 @@ def parse_github_remote(remote_url: str | None) -> tuple[str | None, str | None]
         if match:
             return match.group("owner"), match.group("repo")
     return None, None
+
+
+def secrets_path(workspace_root: Path) -> Path:
+    return workspace_root / "services" / "secrets.env"
+
+
+def read_secret(workspace_root: Path, key: str) -> str | None:
+    path = secrets_path(workspace_root)
+    if not path.exists():
+        return None
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip() or line.lstrip().startswith("#"):
+                continue
+            name, _, value = line.partition("=")
+            if name.strip() == key:
+                return unquote_env_value(value.strip())
+    except OSError:
+        return None
+    return None
+
+
+def set_secret(workspace_root: Path, key: str, value: str) -> None:
+    path = secrets_path(workspace_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = []
+    found = False
+    if path.exists():
+        lines = path.read_text(encoding="utf-8").splitlines()
+    next_lines = []
+    for line in lines:
+        name, sep, _ = line.partition("=")
+        if sep and name.strip() == key:
+            next_lines.append(f"{key}={quote_env_value(value)}")
+            found = True
+        else:
+            next_lines.append(line)
+    if not found:
+        next_lines.append(f"{key}={quote_env_value(value)}")
+    path.write_text("\n".join(next_lines).rstrip() + "\n", encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+
+
+def remove_secret(workspace_root: Path, key: str) -> None:
+    path = secrets_path(workspace_root)
+    if not path.exists():
+        return
+    lines = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        name, sep, _ = line.partition("=")
+        if sep and name.strip() == key:
+            continue
+        lines.append(line)
+    path.write_text("\n".join(lines).rstrip() + ("\n" if lines else ""), encoding="utf-8")
+
+
+def quote_env_value(value: str) -> str:
+    if not any(char.isspace() or char in {'"', "#"} for char in value):
+        return value
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def unquote_env_value(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] == '"':
+        return value[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+    return value

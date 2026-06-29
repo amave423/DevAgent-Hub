@@ -59,9 +59,7 @@ async function main() {
 
     assert.equal(result.ok, true);
     assert.equal(config.runtime.runnerMode, "mock");
-    assert.equal(config.agents.find((agent) => agent.id === "generator").modelId, "ollama-qwen25-coder-7b");
-    assert.equal(config.agents.find((agent) => agent.id === "critic").modelId, "openrouter-auto");
-    assert.equal(config.agents.find((agent) => agent.id === "finalizer").modelId, "openai-gpt-4o-mini");
+    assert.equal(config.agents.find((agent) => agent.id === "assistant").modelId, "openrouter-auto");
     assert.deepEqual(config.models.map((model) => model.id), ["ollama-qwen25-coder-7b", "openrouter-auto", "openai-gpt-4o-mini"]);
     assert.doesNotMatch(envFile, /test-openrouter-key/);
     assert.doesNotMatch(envFile, /test-openai-key/);

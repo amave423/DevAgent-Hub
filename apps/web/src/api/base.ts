@@ -42,7 +42,7 @@ export function authQuery(): string {
 export async function devHubFetch(path: string, init?: RequestInit, retry = true): Promise<Response> {
   const token = accessToken();
   const headers = new Headers(init?.headers);
-  if (!headers.has("Content-Type") && init?.body) {
+  if (!headers.has("Content-Type") && init?.body && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
   if (token) {

@@ -20,6 +20,8 @@ export function saveRuntimeSettings(payload: {
   theme?: AppTheme;
   agentMode?: AgentRunMode;
   actionPolicy?: ActionPolicy;
+  webSearchEnabled?: boolean;
+  webSearchBaseUrl?: string;
 }): Promise<RuntimeSettings> {
   return request<RuntimeSettings>("/api/settings/runtime", {
     method: "POST",

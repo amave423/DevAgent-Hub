@@ -14,7 +14,7 @@ export function PreviewPanel({
 }) {
   return (
     <div className="tab-panel full-bleed-panel">
-      <PanelHeader title={t("previewTitle")} subtitle="Inspect local apps and agent-built web output." />
+      <PanelHeader title={t("previewTitle")} subtitle={t("previewSubtitle")} />
       <div className="url-bar">
         <Globe2 size={16} />
         <input value={settings.previewUrl} onChange={(event) => patchSettings({ previewUrl: event.target.value })} />

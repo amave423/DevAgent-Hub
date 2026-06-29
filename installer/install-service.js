@@ -177,12 +177,17 @@ function buildInstallExecutionSteps(rawSettings) {
       timeoutMs: 300000,
     },
     {
-      ...npmStep(settings, "code-editor-install", "Install browser code editor (optional)", [
-        "install",
-        "--prefix",
-        path.join(settings.installPath, ".tools", "code-server"),
-        `code-server@${CODE_SERVER_VERSION}`,
-      ]),
+      id: "code-editor-install",
+      label: "Install browser code editor (optional)",
+      cwd: settings.installPath,
+      command: python,
+      args: [
+        path.join(settings.installPath, "scripts", "install_code_server.py"),
+        "--workspace",
+        settings.installPath,
+        "--version",
+        CODE_SERVER_VERSION,
+      ],
       optional: true,
       timeoutMs: 900000,
     },
@@ -578,7 +583,7 @@ async function buildAgentsConfig(settings) {
   const selectedModelIds = new Set(settings.selectedModelIds);
   const selectedModels = config.models
     .filter((model) => selectedModelIds.has(model.id))
-    .map((model) => applyCloudBaseUrl(model, settings));
+    .map((model) => applyCloudBaseUrl({ ...model, modelName: model.modelName || model.name }, settings));
 
   if (selectedModels.length === 0) {
     throw new Error(`Selected models were not found in the default config: ${settings.selectedModelIds.join(", ")}`);
@@ -683,7 +688,8 @@ function quoteEnv(value) {
 
 function buildInstallCommands(settings) {
   const modelPulls = selectedOllamaModelNames(settings).map((modelName) => `ollama pull ${modelName}`);
-  const editorInstall = `npm install --prefix "${path.join(settings.installPath, ".tools", "code-server")}" code-server@${CODE_SERVER_VERSION}`;
+  const editorInstallWin = `.\\.venv\\Scripts\\python.exe .\\scripts\\install_code_server.py --workspace "${settings.installPath}" --version ${CODE_SERVER_VERSION}`;
+  const editorInstallLinux = `./.venv/bin/python ./scripts/install_code_server.py --workspace "${settings.installPath}" --version ${CODE_SERVER_VERSION}`;
 
   if (process.platform === "win32") {
     return [
@@ -692,7 +698,7 @@ function buildInstallCommands(settings) {
       ".\\.venv\\Scripts\\python.exe -m pip install -r .\\services\\agent-api\\requirements.txt",
       "npm install",
       "npm run build:web",
-      editorInstall,
+      editorInstallWin,
       ...modelPulls,
       ".\\.venv\\Scripts\\python.exe .\\scripts\\smoke_devhub_api.py",
       ".\\services\\install-windows-task.ps1",
@@ -705,7 +711,7 @@ function buildInstallCommands(settings) {
     "./.venv/bin/python -m pip install -r ./services/agent-api/requirements.txt",
     "npm install",
     "npm run build:web",
-    editorInstall,
+    editorInstallLinux,
     ...modelPulls,
     "./.venv/bin/python ./scripts/smoke_devhub_api.py",
     "./services/install-linux-systemd.sh",
