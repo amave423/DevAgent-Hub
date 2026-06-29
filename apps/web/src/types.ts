@@ -3,6 +3,9 @@ export type LocalModelSource = "ollama" | "huggingface";
 export type TaskStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 export type LogLevel = "info" | "debug" | "warning" | "error" | "success";
 export type AppLanguage = "ru" | "en";
+export type AppTheme = "dark" | "light";
+export type AgentRunMode = "plan" | "coding";
+export type ActionPolicy = "confirm" | "auto-confirm" | "full-access";
 export type WorkbenchTab =
   | "chat"
   | "agents"
@@ -92,6 +95,12 @@ export interface ModelDownloadState {
   progress: number;
   message: string;
   model?: AgentModel | null;
+  modelName?: string | null;
+  repoId?: string | null;
+  filename?: string | null;
+  displayName?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AddCloudModelRequest {
@@ -102,6 +111,20 @@ export interface AddCloudModelRequest {
   apiKeyEnv?: string | null;
   apiKey?: string | null;
   description?: string;
+}
+
+export interface CloudModelTestRequest {
+  name: string;
+  provider: string;
+  baseUrl?: string | null;
+  apiKeyEnv?: string | null;
+  apiKey?: string | null;
+}
+
+export interface CloudModelTestResponse {
+  ok: boolean;
+  message: string;
+  output: string;
 }
 
 export interface AgentDefinition {
@@ -117,6 +140,8 @@ export interface RuntimeConfig {
   maxParallelTasks: number;
   logRetention: number;
   runnerMode: "auto" | "live" | "mock";
+  agentMode: AgentRunMode;
+  actionPolicy: ActionPolicy;
   requestTimeoutSeconds: number;
   maxOutputChars: number;
 }
@@ -143,6 +168,8 @@ export interface TaskState {
   result?: string | null;
   error?: string | null;
   activeAgentId?: string | null;
+  mode: AgentRunMode;
+  actionPolicy: ActionPolicy;
 }
 
 export interface AgentLogEvent {
@@ -166,11 +193,24 @@ export interface ModelPurpose {
 
 export interface DevHubSettings {
   language: AppLanguage;
+  theme: AppTheme;
   openVsCodeUrl: string;
   previewUrl: string;
   githubOwner: string;
   githubDefaultVisibility: "private" | "public";
   modelPurposes: ModelPurpose[];
+}
+
+export interface RuntimeSettings {
+  theme: AppTheme;
+  agentMode: AgentRunMode;
+  actionPolicy: ActionPolicy;
+  externalAccess: boolean;
+  host: string;
+  port: number;
+  authRequired: boolean;
+  authTokenConfigured: boolean;
+  urls: string[];
 }
 
 export interface IntegrationStatus {

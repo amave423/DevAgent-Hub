@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   Activity,
@@ -11,11 +11,12 @@ import {
   LayoutDashboard,
   Loader2,
   MessageSquareText,
+  Moon,
   Play,
   RotateCcw,
-  Save,
   Settings2,
   ScrollText,
+  Sun,
   TerminalSquare,
 } from "lucide-react";
 
@@ -49,11 +50,14 @@ const tabs: Array<{ id: WorkbenchTab; icon: ReactNode; labelKey: CopyKey }> = [
   { id: "settings", icon: <Settings2 size={18} />, labelKey: "tabSettings" },
 ];
 
+const ACTIVE_TAB_KEY = "devagent-hub.active-tab";
+
 export function App() {
-  const [activeTab, setActiveTab] = useState<WorkbenchTab>("chat");
+  const [activeTab, setActiveTab] = useState<WorkbenchTab>(() => loadActiveTab());
   const [taskText, setTaskText] = useState(
     "Собери план MVP для автономной IDE-панели DevAgent Hub и предложи первые изменения в коде.",
   );
+  const autoStartEditorRef = useRef(false);
 
   const {
     config,
@@ -85,32 +89,32 @@ export function App() {
     handleStartOpenVSCode,
     handleStopOpenVSCode,
     handleInstallOpenVSCode,
-    runWorkspaceAction,
   } = useWorkspace(settings);
 
-  // Keyboard shortcut: Ctrl+Enter to run
+  useEffect(() => {
+    window.localStorage.setItem(ACTIVE_TAB_KEY, activeTab);
+  }, [activeTab]);
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === "s") {
         e.preventDefault();
-        if (config && settings) handleSave();
+        if (config && settings) void handleSave();
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   });
 
+  useEffect(() => {
+    if (!workspaceStatus?.openVsCode.configured || workspaceStatus.openVsCode.running || isStartingEditor) return;
+    if (autoStartEditorRef.current) return;
+    autoStartEditorRef.current = true;
+    void handleStartOpenVSCode();
+  }, [handleStartOpenVSCode, isStartingEditor, workspaceStatus?.openVsCode.configured, workspaceStatus?.openVsCode.running]);
+
   const t = (key: CopyKey) => translate(language, key);
-
   const onRun = () => handleRun(taskText);
-
-  // Sync OpenVSCode URL when backend starts it
-  const handleStartAndSync = async () => {
-    await handleStartOpenVSCode();
-    if (workspaceStatus?.openVsCode.url) {
-      patchSettings({ openVsCodeUrl: workspaceStatus.openVsCode.url.startsWith("/ide") ? "" : workspaceStatus.openVsCode.url });
-    }
-  };
 
   if (!config || !settings) {
     return (
@@ -169,24 +173,24 @@ export function App() {
               <Languages size={18} />
               <span>{language.toUpperCase()}</span>
             </button>
+            <button
+              className="icon-button"
+              title={settings.theme === "dark" ? t("lightTheme") : t("darkTheme")}
+              onClick={() => patchSettings({ theme: settings.theme === "dark" ? "light" : "dark" })}
+            >
+              {settings.theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
             <button className="icon-button" title={t("reset")} onClick={resetRun}>
               <RotateCcw size={18} />
             </button>
-            <button className="secondary-button" onClick={() => handleSave()} disabled={isSaving}>
-              {isSaving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}
-              {t("save")}
-            </button>
-            <button
-              className="primary-button"
-              onClick={onRun}
-              disabled={isRunning || enabledAgents.length === 0}
-            >
+            <button className="primary-button" onClick={onRun} disabled={isRunning || enabledAgents.length === 0}>
               {isRunning ? <Loader2 className="spin" size={16} /> : <Play size={16} />}
               {t("run")}
             </button>
           </div>
         </header>
 
+        {isSaving && <div className="notice-strip">{t("autosaving")}</div>}
         {error && <div className="error-strip">{error}</div>}
         {workspaceNotice && <div className="notice-strip">{workspaceNotice}</div>}
 
@@ -220,8 +224,6 @@ export function App() {
                 effectiveUrl={effectiveOpenVsCodeUrl}
                 workspaceStatus={workspaceStatus}
                 isStarting={isStartingEditor}
-                onStart={handleStartAndSync}
-                onStop={handleStopOpenVSCode}
                 onInstall={handleInstallOpenVSCode}
                 t={t}
               />
@@ -283,17 +285,29 @@ function RunSummary({
     <section className="rail-card">
       <div className="section-heading compact">
         <div>
-	          <h3>{t("runSummary")}</h3>
+          <h3>{t("runSummary")}</h3>
           <span>{taskState?.taskId ? taskState.taskId.slice(0, 8) : t("ready")}</span>
         </div>
         <Activity size={18} />
       </div>
       <ProgressBar value={taskState?.progress ?? 0} />
       <div className="metrics-grid">
-	        <Metric label={t("status")} value={taskState?.status ?? t("ready")} />
-	        <Metric label={t("agentsTitle")} value={String(enabledAgents.length)} />
-	        <Metric label={t("events")} value={String(logs.length)} />
+        <Metric label={t("status")} value={taskState?.status ?? t("ready")} />
+        <Metric label={t("agentsTitle")} value={String(enabledAgents.length)} />
+        <Metric label={t("events")} value={String(logs.length)} />
       </div>
     </section>
   );
+}
+
+function loadActiveTab(): WorkbenchTab {
+  try {
+    const stored = window.localStorage.getItem(ACTIVE_TAB_KEY) as WorkbenchTab | null;
+    if (stored && tabs.some((tab) => tab.id === stored)) {
+      return stored;
+    }
+    return "chat";
+  } catch {
+    return "chat";
+  }
 }

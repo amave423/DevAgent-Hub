@@ -153,7 +153,7 @@ function resolveOpenVsCodeUrl(settingsUrl: string, workspaceStatus: WorkspaceSta
     return settingsUrl;
   }
 
-  return workspaceStatus?.openVsCode.url || settingsUrl || "";
+  return "";
 }
 
 function isLoopbackEditorUrl(value: string): boolean {

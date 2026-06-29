@@ -9,14 +9,17 @@ import httpx
 import websockets
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config_store import ConfigStore
 from .model_manager import ModelManager
 from .models import (
     AddCloudModelRequest,
+    ActionDecisionResponse,
     AgentsConfig,
+    CloudModelTestRequest,
+    CloudModelTestResponse,
     GitCommitRequest,
     GitHubCreateRepoRequest,
     GitHubPullRequestRequest,
@@ -26,14 +29,18 @@ from .models import (
     ModelDownloadState,
     ModelFileListResponse,
     ModelSearchResponse,
+    PendingAction,
+    RuntimeSettings,
     RunAgentsRequest,
     RunAgentsResponse,
+    SaveRuntimeSettingsRequest,
     SetGitRemoteRequest,
     StartOpenVSCodeRequest,
     TaskStatus,
     WorkspaceActionResponse,
     WorkspaceStatus,
 )
+from .runtime_settings import ActionRegistry, RuntimeSettingsStore
 from .task_runner import TERMINAL_STATUSES, TaskRegistry
 from .terminal import TerminalManager
 from .workspace_service import GitHubService, OpenVSCodeManager, WorkspaceService
@@ -47,6 +54,8 @@ model_manager = ModelManager(config_store, workspace_service.root)
 openvscode_manager = OpenVSCodeManager(workspace_service.root)
 github_service = GitHubService(workspace_service)
 terminal_manager = TerminalManager(workspace_service.root)
+runtime_settings_store = RuntimeSettingsStore(workspace_service.root)
+action_registry = ActionRegistry()
 
 app.add_middleware(
     CORSMiddleware,
@@ -54,10 +63,27 @@ app.add_middleware(
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ],
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|0\.0\.0\.0|10\..*|192\.168\..*|172\.(1[6-9]|2[0-9]|3[0-1])\..*):\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def api_auth_guard(request: Request, call_next):
+    if request.method == "OPTIONS" or not requires_auth(request):
+        return await call_next(request)
+    return JSONResponse(
+        status_code=401,
+        content={"detail": "DevAgent Hub access token is required."},
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+@app.on_event("startup")
+async def startup() -> None:
+    maybe_start_openvscode()
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +115,17 @@ async def save_agents_config(config: AgentsConfig) -> AgentsConfig:
 @app.post("/api/agents/run", response_model=RunAgentsResponse)
 async def run_agents(request: RunAgentsRequest) -> RunAgentsResponse:
     config = config_store.load()
+    if request.mode is not None or request.actionPolicy is not None:
+        config = config.model_copy(
+            update={
+                "runtime": config.runtime.model_copy(
+                    update={
+                        "agentMode": request.mode or config.runtime.agentMode,
+                        "actionPolicy": request.actionPolicy or config.runtime.actionPolicy,
+                    }
+                )
+            }
+        )
     state = await task_registry.create(request, config)
     return RunAgentsResponse(taskId=state.taskId, status=TaskStatus.queued)
 
@@ -170,12 +207,35 @@ async def download_local_model(request: ModelDownloadRequest) -> ModelDownloadSt
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@app.get("/api/models/local/downloads", response_model=list[ModelDownloadState])
+async def list_model_downloads() -> list[ModelDownloadState]:
+    return model_manager.list_downloads()
+
+
 @app.get("/api/models/local/downloads/{download_id}", response_model=ModelDownloadState)
 async def get_model_download(download_id: str) -> ModelDownloadState:
     state = model_manager.get_download(download_id)
     if state is None:
         raise HTTPException(status_code=404, detail="Model download not found")
     return state
+
+
+@app.post("/api/models/local/downloads/{download_id}/retry", response_model=ModelDownloadState)
+async def retry_model_download(download_id: str) -> ModelDownloadState:
+    try:
+        return await model_manager.retry_download(download_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Model download not found") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.delete("/api/models/local/{source}/{model_ref:path}", response_model=AgentsConfig)
+async def delete_local_model(source: str, model_ref: str) -> AgentsConfig:
+    try:
+        return await model_manager.delete_local_model(source, model_ref)
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.post("/api/models/cloud", response_model=AgentsConfig)
@@ -186,12 +246,75 @@ async def add_cloud_model(request: AddCloudModelRequest) -> AgentsConfig:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@app.post("/api/models/cloud/test", response_model=CloudModelTestResponse)
+async def test_cloud_model(request: CloudModelTestRequest) -> CloudModelTestResponse:
+    try:
+        return await model_manager.test_cloud_model(request)
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Runtime settings and action policy
+# ---------------------------------------------------------------------------
+
+@app.get("/api/settings/runtime", response_model=RuntimeSettings)
+async def get_runtime_settings() -> RuntimeSettings:
+    return runtime_settings_store.load()
+
+
+@app.post("/api/settings/runtime", response_model=RuntimeSettings)
+async def save_runtime_settings(request: SaveRuntimeSettingsRequest) -> RuntimeSettings:
+    settings = runtime_settings_store.save(request)
+    try:
+        config = config_store.load()
+        config_store.save(
+            config.model_copy(
+                update={
+                    "runtime": config.runtime.model_copy(
+                        update={
+                            "agentMode": settings.agentMode,
+                            "actionPolicy": settings.actionPolicy,
+                        }
+                    )
+                }
+            )
+        )
+    except FileNotFoundError:
+        pass
+    return settings
+
+
+@app.get("/api/actions", response_model=list[PendingAction])
+async def list_actions() -> list[PendingAction]:
+    return action_registry.list()
+
+
+@app.post("/api/actions/{action_id}/approve", response_model=ActionDecisionResponse)
+async def approve_action(action_id: str) -> ActionDecisionResponse:
+    try:
+        return ActionDecisionResponse(ok=True, action=action_registry.approve(action_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Action not found") from exc
+
+
+@app.post("/api/actions/{action_id}/reject", response_model=ActionDecisionResponse)
+async def reject_action(action_id: str) -> ActionDecisionResponse:
+    try:
+        return ActionDecisionResponse(ok=True, action=action_registry.reject(action_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Action not found") from exc
+
+
 # ---------------------------------------------------------------------------
 # Terminal
 # ---------------------------------------------------------------------------
 
 @app.websocket("/api/terminal/ws")
 async def terminal_websocket(ws: WebSocket) -> None:
+    if not websocket_authorized(ws):
+        await ws.close(code=1008)
+        return
     await terminal_manager.handle(ws)
 
 
@@ -201,6 +324,7 @@ async def terminal_websocket(ws: WebSocket) -> None:
 
 @app.get("/api/workspace/status", response_model=WorkspaceStatus)
 async def get_workspace_status() -> WorkspaceStatus:
+    maybe_start_openvscode()
     return workspace_service.status(openvscode_manager)
 
 
@@ -289,7 +413,7 @@ async def install_openvscode() -> WorkspaceActionResponse:
 
 @app.api_route("/ide/{full_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
 async def proxy_openvscode_http(full_path: str, request: Request) -> Response:
-    target_base = openvscode_manager.target_url()
+    target_base = ensure_openvscode_running()
     if not target_base:
         raise HTTPException(status_code=404, detail="OpenVSCode Server is not running")
 
@@ -321,7 +445,7 @@ async def proxy_openvscode_http(full_path: str, request: Request) -> Response:
 
 @app.websocket("/ide/{full_path:path}")
 async def proxy_openvscode_websocket(ws: WebSocket, full_path: str) -> None:
-    target_base = openvscode_manager.target_url()
+    target_base = ensure_openvscode_running()
     if not target_base:
         await ws.close(code=1011)
         return
@@ -414,6 +538,62 @@ async def create_github_pull_request(request: GitHubPullRequestRequest) -> Works
 
 def sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def requires_auth(request: Request) -> bool:
+    token = os.getenv("DEVAGENT_AUTH_TOKEN")
+    if not token:
+        return False
+    if not request.url.path.startswith("/api"):
+        return False
+    if is_local_client(request.client.host if request.client else ""):
+        return False
+    return not token_matches(request.headers.get("x-devagent-token"), request.headers.get("authorization"), request.query_params.get("token"))
+
+
+def websocket_authorized(ws: WebSocket) -> bool:
+    token = os.getenv("DEVAGENT_AUTH_TOKEN")
+    if not token:
+        return True
+    if is_local_client(ws.client.host if ws.client else ""):
+        return True
+    return token_matches(ws.headers.get("x-devagent-token"), ws.headers.get("authorization"), ws.query_params.get("token"))
+
+
+def token_matches(header_token: str | None, authorization: str | None, query_token: str | None) -> bool:
+    expected = os.getenv("DEVAGENT_AUTH_TOKEN")
+    if not expected:
+        return True
+    candidates = [header_token, query_token]
+    if authorization and authorization.lower().startswith("bearer "):
+        candidates.append(authorization[7:].strip())
+    return any(candidate == expected for candidate in candidates if candidate)
+
+
+def is_local_client(host: str) -> bool:
+    return host in {"127.0.0.1", "::1", "localhost"} or host.startswith("127.")
+
+
+def maybe_start_openvscode() -> None:
+    if os.getenv("DEVAGENT_AUTOSTART_IDE", "1").lower() in {"0", "false", "no"}:
+        return
+    if openvscode_manager.target_url():
+        return
+    try:
+        openvscode_manager.start(
+            StartOpenVSCodeRequest(
+                host="127.0.0.1",
+                port=int(os.getenv("OPENVSCODE_PORT", "3001") or "3001"),
+                withoutConnectionToken=True,
+            )
+        )
+    except Exception:
+        return
+
+
+def ensure_openvscode_running() -> str | None:
+    maybe_start_openvscode()
+    return openvscode_manager.target_url()
 
 
 def proxy_headers(headers: dict[str, str], target_base: str) -> dict[str, str]:

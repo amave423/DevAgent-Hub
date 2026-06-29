@@ -1,4 +1,5 @@
 const { execFile } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const fsSync = require("node:fs");
 const os = require("node:os");
@@ -105,7 +106,8 @@ async function prepareInstall(rawSettings) {
     runnerMode: settings.runnerMode,
     proxyConfigured: Boolean(settings.proxyUrl),
     cloudProvider: settings.cloudProvider,
-    serviceUrl: `http://127.0.0.1:${DEFAULT_SERVICE_PORT}`,
+    serviceUrl: serviceUrl(settings),
+    externalAccess: settings.externalAccess,
     files: generatedFiles,
     commands,
     serviceCommands: buildServiceCommands(settings),
@@ -211,13 +213,21 @@ function runtimeEnv(settings) {
     AGENT_STUDIO_RUNNER_MODE: settings.runnerMode,
     DEVAGENT_WORKSPACE: settings.installPath,
     DEVAGENT_WEB_DIST: path.join(settings.installPath, "apps", "web", "dist"),
-    OLLAMA_BASE_URL: "http://localhost:11434",
+    DEVAGENT_HOST: settings.serviceHost,
+    DEVAGENT_PORT: String(settings.servicePort),
+    DEVAGENT_EXTERNAL_ACCESS: settings.externalAccess ? "true" : "false",
+    OLLAMA_BASE_URL: "http://127.0.0.1:11434",
+    NO_PROXY: "localhost,127.0.0.1",
   };
 
   if (settings.proxyUrl) {
     env.HTTP_PROXY = settings.proxyUrl;
     env.HTTPS_PROXY = settings.proxyUrl;
     env.NO_PROXY = "localhost,127.0.0.1";
+  }
+
+  if (settings.authToken) {
+    env.DEVAGENT_AUTH_TOKEN = settings.authToken;
   }
 
   if (settings.apiKey) {
@@ -234,6 +244,7 @@ function runtimeEnv(settings) {
 
 function buildDevHubLaunchStep(rawSettings, port = DEFAULT_SERVICE_PORT) {
   const settings = normalizeSettings(rawSettings);
+  const servicePort = settings.servicePort || port;
 
   return {
     id: "devhub-start",
@@ -247,15 +258,15 @@ function buildDevHubLaunchStep(rawSettings, port = DEFAULT_SERVICE_PORT) {
       "--app-dir",
       path.join(settings.installPath, "services", "agent-api"),
       "--host",
-      "127.0.0.1",
+      settings.serviceHost,
       "--port",
-      String(port),
+      String(servicePort),
     ],
     env: {
       ...runtimeEnv(settings),
       SERVE_FRONTEND: "true",
     },
-    url: `http://127.0.0.1:${port}`,
+    url: serviceUrl(settings),
   };
 }
 
@@ -473,6 +484,10 @@ function normalizeSettings(rawSettings = {}) {
     selectedModelIds,
     runnerMode,
     proxyUrl: String(rawSettings.proxyUrl || "").trim(),
+    externalAccess: normalizeBoolean(rawSettings.externalAccess, false),
+    serviceHost: normalizeBoolean(rawSettings.externalAccess, false) ? "0.0.0.0" : "127.0.0.1",
+    servicePort: Number(rawSettings.servicePort || rawSettings.port || DEFAULT_SERVICE_PORT),
+    authToken: String(rawSettings.authToken || "").trim() || (normalizeBoolean(rawSettings.externalAccess, false) ? crypto.randomBytes(18).toString("base64url") : ""),
     apiKey: String(rawSettings.apiKey || "").trim(),
     apiKeys: normalizeApiKeys(rawSettings),
     agentModelAssignments,
@@ -485,6 +500,12 @@ function normalizeSettings(rawSettings = {}) {
 function normalizeEnum(value, allowed, fallback) {
   const normalized = String(value || fallback).trim();
   return allowed.includes(normalized) ? normalized : fallback;
+}
+
+function normalizeBoolean(value, fallback = false) {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value === "boolean") return value;
+  return ["1", "true", "yes", "y", "on"].includes(String(value).trim().toLowerCase());
 }
 
 function parseModelIdList(value) {
@@ -605,8 +626,12 @@ function buildEnvFile(settings, configPath) {
     `AGENT_CONFIG_PATH=${quoteEnv(configPath)}`,
     `DEVAGENT_WORKSPACE=${quoteEnv(env.DEVAGENT_WORKSPACE)}`,
     `DEVAGENT_WEB_DIST=${quoteEnv(env.DEVAGENT_WEB_DIST)}`,
+    `DEVAGENT_HOST=${settings.serviceHost}`,
+    `DEVAGENT_PORT=${settings.servicePort}`,
+    `DEVAGENT_EXTERNAL_ACCESS=${settings.externalAccess ? "true" : "false"}`,
     `AGENT_STUDIO_RUNNER_MODE=${settings.runnerMode}`,
-    "OLLAMA_BASE_URL=http://localhost:11434",
+    "OLLAMA_BASE_URL=http://127.0.0.1:11434",
+    "NO_PROXY=localhost,127.0.0.1",
   ];
 
   if (settings.proxyUrl) {
@@ -760,15 +785,17 @@ function buildWindowsStartScript(settings) {
     "$env:DEVAGENT_WORKSPACE = \"$ProjectRoot\"",
     "$env:AGENT_CONFIG_PATH = Join-Path $ProjectRoot '.devagent\\agents.json'",
     "$env:DEVAGENT_WEB_DIST = Join-Path $ProjectRoot 'apps\\web\\dist'",
+    "if (!$env:DEVAGENT_HOST) { $env:DEVAGENT_HOST = '127.0.0.1' }",
+    "if (!$env:DEVAGENT_PORT) { $env:DEVAGENT_PORT = '3000' }",
     "$Python = Join-Path $ProjectRoot '.venv\\Scripts\\python.exe'",
     "$ApiDir = Join-Path $ProjectRoot 'services\\agent-api'",
     "Set-Location $ProjectRoot",
     "try {",
-    "  $Health = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:3000/health' -TimeoutSec 2",
+    "  $Health = Invoke-WebRequest -UseBasicParsing -Uri \"http://127.0.0.1:$($env:DEVAGENT_PORT)/health\" -TimeoutSec 2",
     "  if ($Health.StatusCode -eq 200) { return }",
     "} catch {",
     "}",
-    "& $Python -m uvicorn app.main:app --app-dir $ApiDir --host 127.0.0.1 --port 3000",
+    "& $Python -m uvicorn app.main:app --app-dir $ApiDir --host $env:DEVAGENT_HOST --port $env:DEVAGENT_PORT",
     "",
   ].join("\n");
 }
@@ -798,7 +825,7 @@ function buildWindowsTaskInstallScript() {
     "    Set-Content -LiteralPath $CmdPath -Encoding ASCII -Value \"@echo off`r`nstart `\"`\" /min powershell.exe $Arguments`r`n\"",
     "  }",
     "  Start-Process -FilePath $PowerShell -ArgumentList $Arguments -WindowStyle Hidden",
-    "  Write-Host 'DevAgent Hub startup shortcut installed and started at http://127.0.0.1:3000.'",
+    "  Write-Host 'DevAgent Hub startup shortcut installed and service start requested.'",
     "}",
     "try {",
     "  $Action = New-ScheduledTaskAction -Execute $PowerShell -Argument $Arguments",
@@ -807,7 +834,7 @@ function buildWindowsTaskInstallScript() {
     "  $Principal = New-ScheduledTaskPrincipal -UserId $UserId -LogonType Interactive -RunLevel Limited",
     "  Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Force -ErrorAction Stop | Out-Null",
     "  Start-ScheduledTask -TaskName $TaskName -ErrorAction Stop",
-    "  Write-Host 'DevAgent Hub scheduled task installed and started at http://127.0.0.1:3000.'",
+    "  Write-Host 'DevAgent Hub scheduled task installed and service start requested.'",
     "} catch {",
     "  Write-Warning \"Scheduled Task installation failed: $($_.Exception.Message)\"",
     "  Write-Warning 'Using current-user Startup shortcut fallback instead.'",
@@ -850,7 +877,10 @@ function buildSystemdUnit(settings) {
     "Environment=SERVE_FRONTEND=true",
     systemdEnvironment("DEVAGENT_WORKSPACE", projectRoot),
     systemdEnvironment("DEVAGENT_WEB_DIST", path.join(projectRoot, "apps", "web", "dist")),
-    `ExecStart=${systemdEscape(python)} -m uvicorn app.main:app --app-dir ${systemdEscape(apiDir)} --host 127.0.0.1 --port 3000`,
+    systemdEnvironment("DEVAGENT_HOST", settings.serviceHost),
+    systemdEnvironment("DEVAGENT_PORT", String(settings.servicePort)),
+    systemdEnvironment("DEVAGENT_EXTERNAL_ACCESS", settings.externalAccess ? "true" : "false"),
+    `ExecStart=${systemdEscape(python)} -m uvicorn app.main:app --app-dir ${systemdEscape(apiDir)} --host ${settings.serviceHost} --port ${settings.servicePort}`,
     "Restart=on-failure",
     "RestartSec=5",
     "",
@@ -893,6 +923,7 @@ function buildSecretsExample(settings) {
   return [
     "# Copy this file to secrets.env only if you need headless cloud-provider service mode.",
     "# Keep secrets.env outside git and readable only by the service user.",
+    settings.externalAccess ? `DEVAGENT_AUTH_TOKEN=${settings.authToken || "change-me"}` : "# DEVAGENT_AUTH_TOKEN=",
     `${providerApiKeyName(settings.cloudProvider)}=`,
     "",
   ].join("\n");
@@ -1019,6 +1050,11 @@ function formatAgentAssignments(assignments) {
 
 function buildReadme(settings, commands) {
   const serviceCommands = buildServiceCommands(settings);
+  const urls = [`Web UI: ${serviceUrl(settings)}`];
+  if (settings.externalAccess) {
+    urls.push("LAN URL: open http://<this-machine-LAN-IP>:" + settings.servicePort);
+    urls.push("LAN access token: stored in services/secrets.env as DEVAGENT_AUTH_TOKEN");
+  }
   return [
     "DevAgent Hub install plan",
     "",
@@ -1028,7 +1064,7 @@ function buildReadme(settings, commands) {
     `Enabled models: ${settings.selectedModelIds.join(", ")}`,
     `Per-agent models: ${formatAgentAssignments(settings.agentModelAssignments)}`,
     `Runner mode: ${settings.runnerMode}`,
-    `Web UI: http://127.0.0.1:${DEFAULT_SERVICE_PORT}`,
+    ...urls,
     "",
     "Run from terminal:",
     ...commands.map((command) => `  ${command}`),
@@ -1039,6 +1075,10 @@ function buildReadme(settings, commands) {
     "For cloud models in headless service mode, copy services/secrets.env.example to services/secrets.env and fill the provider key.",
     "",
   ].join("\n");
+}
+
+function serviceUrl(settings) {
+  return `http://127.0.0.1:${settings.servicePort || DEFAULT_SERVICE_PORT}`;
 }
 
 module.exports = {

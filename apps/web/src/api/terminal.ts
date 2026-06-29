@@ -1,4 +1,4 @@
-import { websocketBaseUrl } from "./base";
+import { authQuery, websocketBaseUrl } from "./base";
 
 export interface TerminalSocket {
   send(data: string): void;
@@ -10,7 +10,8 @@ export interface TerminalSocket {
 }
 
 export function connectTerminal(): TerminalSocket {
-  const url = `${websocketBaseUrl()}/api/terminal/ws`;
+  const query = authQuery();
+  const url = `${websocketBaseUrl()}/api/terminal/ws${query ? `?${query}` : ""}`;
 
   const ws = new WebSocket(url);
   const socket: TerminalSocket = {

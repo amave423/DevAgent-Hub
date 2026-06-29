@@ -1,17 +1,24 @@
-import { Cloud, Cpu, Download, HardDrive, Loader2, ShieldCheck, SlidersHorizontal, TestTube2 } from "lucide-react";
+import { CheckCircle2, Cloud, Cpu, Download, HardDrive, Loader2, RefreshCcw, ShieldCheck, SlidersHorizontal, TestTube2, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ProgressBar } from "../components/ProgressBar";
 import {
   addCloudModel,
+  deleteLocalModel,
   getLocalModelDownload,
   getModelCatalog,
   listHuggingFaceFiles,
+  listLocalModelDownloads,
+  retryLocalModelDownload,
   searchModels,
   startLocalModelDownload,
+  testCloudModel,
 } from "../api/models";
+import { saveRuntimeSettings } from "../api/runtime";
 import type {
+  ActionPolicy,
   AddCloudModelRequest,
   AgentModel,
+  AgentRunMode,
   AgentsConfig,
   DevHubSettings,
   IntegrationStatus,
@@ -53,9 +60,10 @@ export function SettingsPanel({
   const [hfFilename, setHfFilename] = useState("");
   const [hfDisplayName, setHfDisplayName] = useState("");
   const [hfFiles, setHfFiles] = useState<string[]>([]);
-  const [downloadState, setDownloadState] = useState<ModelDownloadState | null>(null);
+  const [downloads, setDownloads] = useState<ModelDownloadState[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
+  const [cloudTestNotice, setCloudTestNotice] = useState<string | null>(null);
   const [cloudForm, setCloudForm] = useState<AddCloudModelRequest>({
     id: "",
     name: "",
@@ -67,40 +75,28 @@ export function SettingsPanel({
   });
 
   useEffect(() => {
-    let cancelled = false;
-    getModelCatalog()
-      .then((loadedCatalog) => {
-        if (cancelled) return;
-        setCatalog(loadedCatalog);
-        const first = loadedCatalog.localModels.find((model) => model.source === localSource);
-        if (first) setSelectedLocalModelId(first.id);
-      })
-      .catch((caught: Error) => {
-        if (!cancelled) setCatalogError(caught.message);
-      });
-    return () => {
-      cancelled = true;
-    };
+    void refreshCatalog();
+    void refreshDownloads();
   }, []);
+
+  useEffect(() => {
+    const hasActive = downloads.some((download) => ["queued", "running"].includes(download.status));
+    if (!hasActive) return;
+    const timer = window.setInterval(() => void refreshDownloads(), 1000);
+    return () => window.clearInterval(timer);
+  }, [downloads]);
 
   const localModels = useMemo(
     () => catalog?.localModels.filter((model) => model.source === localSource) ?? [],
     [catalog, localSource],
   );
   const displayedLocalModels = searchResults?.source === localSource ? searchResults.models : localModels;
-
   const selectedLocalModel = displayedLocalModels.find((model) => model.id === selectedLocalModelId) ?? displayedLocalModels[0];
   const selectedLocalModelAlreadyAvailable = Boolean(
-    selectedLocalModel && config.models.some((model) => model.id === selectedLocalModel.id),
+    selectedLocalModel && config.models.some((model) => model.id === selectedLocalModel.id || model.name === selectedLocalModel.modelName),
   );
   const cloudProviderOptions = catalog?.cloudProviders ?? [
-    {
-      id: "custom",
-      name: "Custom",
-      baseUrl: "",
-      apiKeyEnv: "AGENT_STUDIO_API_KEY",
-      description: "",
-    },
+    { id: "custom", name: "Custom", baseUrl: "", apiKeyEnv: "AGENT_STUDIO_API_KEY", description: "" },
   ];
   const canDownloadLocalModel =
     Boolean(selectedLocalModel) &&
@@ -114,30 +110,32 @@ export function SettingsPanel({
     }
   }, [displayedLocalModels, selectedLocalModelId]);
 
-  useEffect(() => {
-    if (!downloadState || ["completed", "failed", "cancelled"].includes(downloadState.status)) return;
+  async function refreshCatalog() {
+    try {
+      const loadedCatalog = await getModelCatalog();
+      setCatalog(loadedCatalog);
+      const first = loadedCatalog.localModels.find((model) => model.source === localSource);
+      if (first) setSelectedLocalModelId(first.id);
+      setCatalogError(null);
+    } catch (caught) {
+      setCatalogError(caught instanceof Error ? caught.message : "Could not load model catalog.");
+    }
+  }
 
-    const timer = window.setInterval(() => {
-      void getLocalModelDownload(downloadState.downloadId)
-        .then((state) => {
-          setDownloadState(state);
-          if (state.status === "completed") {
-            setIsDownloading(false);
-            setSettingsNotice(t("downloadReady"));
-            if (state.model) upsertModel(state.model);
-          }
-          if (state.status === "failed" || state.status === "cancelled") {
-            setIsDownloading(false);
-          }
-        })
-        .catch((caught: Error) => {
-          setIsDownloading(false);
-          setSettingsNotice(caught.message);
-        });
-    }, 1000);
-
-    return () => window.clearInterval(timer);
-  }, [downloadState?.downloadId, downloadState?.status]);
+  async function refreshDownloads() {
+    try {
+      const loaded = await listLocalModelDownloads();
+      setDownloads(loaded);
+      for (const download of loaded) {
+        if (download.status === "completed" && download.model) {
+          upsertModel(download.model);
+        }
+      }
+      setIsDownloading(loaded.some((download) => ["queued", "running"].includes(download.status)));
+    } catch (caught) {
+      setSettingsNotice(caught instanceof Error ? caught.message : "Could not load downloads.");
+    }
+  }
 
   function patchPurpose(id: ModelPurposeId, modelId: string) {
     patchSettings({
@@ -149,14 +147,28 @@ export function SettingsPanel({
 
   function upsertModel(model: AgentModel) {
     patchConfig((current) => {
-      const existing = current.models.some((item) => item.id === model.id);
+      const existingModel = current.models.find((item) => item.id === model.id);
+      if (existingModel && JSON.stringify(existingModel) === JSON.stringify(model)) {
+        return current;
+      }
       return {
         ...current,
-        models: existing
+        models: existingModel
           ? current.models.map((item) => (item.id === model.id ? model : item))
           : [...current.models, model],
       };
     });
+  }
+
+  function patchRuntime(patch: Partial<AgentsConfig["runtime"]>) {
+    patchConfig((current) => ({
+      ...current,
+      runtime: { ...current.runtime, ...patch },
+    }));
+    void saveRuntimeSettings({
+      agentMode: patch.agentMode,
+      actionPolicy: patch.actionPolicy,
+    }).catch((caught: Error) => setSettingsNotice(caught.message));
   }
 
   async function handleDownloadModel() {
@@ -172,10 +184,35 @@ export function SettingsPanel({
         filename: localSource === "huggingface" ? hfFilename.trim() : undefined,
         displayName: localSource === "huggingface" ? hfDisplayName.trim() : undefined,
       });
-      setDownloadState(state);
+      setDownloads((current) => [state, ...current]);
+      void refreshDownloads();
     } catch (caught) {
       setIsDownloading(false);
       setSettingsNotice(caught instanceof Error ? caught.message : "Model download failed.");
+    }
+  }
+
+  async function handleRetryDownload(downloadId: string) {
+    setSettingsNotice(null);
+    try {
+      const state = await retryLocalModelDownload(downloadId);
+      setDownloads((current) => [state, ...current]);
+    } catch (caught) {
+      setSettingsNotice(caught instanceof Error ? caught.message : "Retry failed.");
+    }
+  }
+
+  async function handleDeleteLocalModel() {
+    if (!selectedLocalModel) return;
+    setSettingsNotice(null);
+    try {
+      const ref = selectedLocalModel.modelName || selectedLocalModel.id;
+      const saved = await deleteLocalModel(localSource, ref);
+      patchConfig(() => saved);
+      setSettingsNotice(t("modelDeleted"));
+      await refreshCatalog();
+    } catch (caught) {
+      setSettingsNotice(caught instanceof Error ? caught.message : "Could not delete model.");
     }
   }
 
@@ -257,6 +294,23 @@ export function SettingsPanel({
     }
   }
 
+  async function handleTestCloudModel() {
+    if (!cloudForm.name.trim()) return;
+    setCloudTestNotice(null);
+    try {
+      const result = await testCloudModel({
+        name: cloudForm.name.trim(),
+        provider: cloudForm.provider.trim() || "custom",
+        baseUrl: cloudForm.baseUrl?.trim() || undefined,
+        apiKeyEnv: cloudForm.apiKeyEnv?.trim() || undefined,
+        apiKey: cloudForm.apiKey?.trim() || undefined,
+      });
+      setCloudTestNotice(`${result.message}${result.output ? `: ${result.output}` : ""}`);
+    } catch (caught) {
+      setCloudTestNotice(caught instanceof Error ? caught.message : "Cloud model test failed.");
+    }
+  }
+
   return (
     <div className="tab-panel settings-panel">
       <PanelHeader title={t("settingsTitle")} subtitle={t("settingsSubtitle")} />
@@ -299,13 +353,10 @@ export function SettingsPanel({
             </div>
             <label className="field">
               <span>{t("localModel")}</span>
-              <select
-                value={selectedLocalModel?.id ?? ""}
-                onChange={(event) => void handleSelectLocalModel(event.target.value)}
-              >
+              <select value={selectedLocalModel?.id ?? ""} onChange={(event) => void handleSelectLocalModel(event.target.value)}>
                 {displayedLocalModels.map((model) => (
                   <option key={model.id} value={model.id}>
-                    {model.name} · {model.provider}{model.installed ? " · installed" : ""}
+                    {model.name} / {model.provider}{model.installed ? " / installed" : ""}
                   </option>
                 ))}
               </select>
@@ -316,7 +367,7 @@ export function SettingsPanel({
             <div className="model-detail-row">
               <HardDrive size={18} />
               <span>
-                {selectedLocalModel.description} RAM {selectedLocalModel.requirements.ramGb}GB · disk {selectedLocalModel.requirements.diskGb}GB
+                {selectedLocalModel.description} RAM {selectedLocalModel.requirements.ramGb}GB / disk {selectedLocalModel.requirements.diskGb}GB
               </span>
               {selectedLocalModelAlreadyAvailable && <em>{t("modelAlreadyAvailable")}</em>}
             </div>
@@ -327,12 +378,7 @@ export function SettingsPanel({
               <div className="settings-grid compact-grid">
                 <label className="field">
                   <span>{t("huggingFaceRepo")}</span>
-                  <input
-                    value={hfRepoId}
-                    onChange={(event) => setHfRepoId(event.target.value)}
-                    onBlur={() => void loadHuggingFaceFiles(hfRepoId)}
-                    placeholder="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
-                  />
+                  <input value={hfRepoId} onChange={(event) => setHfRepoId(event.target.value)} onBlur={() => void loadHuggingFaceFiles(hfRepoId)} placeholder="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF" />
                 </label>
                 <label className="field">
                   <span>{t("huggingFaceFilename")}</span>
@@ -360,32 +406,51 @@ export function SettingsPanel({
               {isDownloading ? <Loader2 className="spin" size={16} /> : <Download size={16} />}
               {t("downloadModel")}
             </button>
+            <button className="danger-button" onClick={() => void handleDeleteLocalModel()} disabled={!selectedLocalModelAlreadyAvailable && !selectedLocalModel?.installed}>
+              <Trash2 size={16} />
+              {t("deleteModel")}
+            </button>
+            <button className="secondary-button" onClick={() => void refreshDownloads()}>
+              <RefreshCcw size={16} />
+              {t("refresh")}
+            </button>
           </div>
 
-          {downloadState && (
-            <div className="download-state">
-              <div className="section-heading compact">
-                <div>
-                  <h3>{t("downloadProgress")}</h3>
-                  <span>{downloadState.message}</span>
-                </div>
-                <strong>{downloadState.progress}%</strong>
-              </div>
-              <ProgressBar value={downloadState.progress} />
+          {downloads.length > 0 && (
+            <div className="download-list">
+              {downloads.slice(0, 6).map((download) => (
+                <article className="download-state" key={download.downloadId}>
+                  <div className="section-heading compact">
+                    <div>
+                      <h3>{download.displayName || download.modelName || download.modelId}</h3>
+                      <span>{download.message}</span>
+                    </div>
+                    <strong>{download.status}</strong>
+                  </div>
+                  <ProgressBar value={download.progress} />
+                  <div className="inline-actions left">
+                    {download.status === "failed" && (
+                      <button className="secondary-button" onClick={() => void handleRetryDownload(download.downloadId)}>
+                        <RefreshCcw size={16} />
+                        {t("retry")}
+                      </button>
+                    )}
+                  </div>
+                </article>
+              ))}
             </div>
           )}
         </section>
 
         <section>
           <h3>{t("cloudModels")}</h3>
+          {cloudTestNotice && <div className="notice-strip inline">{cloudTestNotice}</div>}
           <div className="settings-grid">
             <label className="field">
               <span>{t("cloudProvider")}</span>
               <select value={cloudForm.provider} onChange={(event) => selectCloudProvider(event.target.value)}>
                 {cloudProviderOptions.map((provider) => (
-                  <option key={provider.id} value={provider.id}>
-                    {provider.name}
-                  </option>
+                  <option key={provider.id} value={provider.id}>{provider.name}</option>
                 ))}
               </select>
             </label>
@@ -410,10 +475,16 @@ export function SettingsPanel({
               <input value={cloudForm.apiKey ?? ""} onChange={(event) => updateCloudForm({ apiKey: event.target.value })} type="password" placeholder="sk-..." />
             </label>
           </div>
-          <button className="secondary-button" onClick={() => void handleAddCloudModel()} disabled={!cloudForm.name.trim()}>
-            <Cloud size={16} />
-            {t("addCloudModel")}
-          </button>
+          <div className="inline-actions left">
+            <button className="secondary-button" onClick={() => void handleTestCloudModel()} disabled={!cloudForm.name.trim()}>
+              <TestTube2 size={16} />
+              {t("testModel")}
+            </button>
+            <button className="secondary-button" onClick={() => void handleAddCloudModel()} disabled={!cloudForm.name.trim()}>
+              <Cloud size={16} />
+              {t("addCloudModel")}
+            </button>
+          </div>
         </section>
 
         <section>
@@ -428,7 +499,7 @@ export function SettingsPanel({
                 <select value={purpose.modelId} onChange={(event) => patchPurpose(purpose.id, event.target.value)}>
                   {config.models.map((model) => (
                     <option key={model.id} value={model.id}>
-                      {model.name} · {model.provider}
+                      {model.name} / {model.provider}
                     </option>
                   ))}
                 </select>
@@ -445,14 +516,11 @@ export function SettingsPanel({
           <h3>{t("runtime")}</h3>
           <div className="settings-grid">
             <label className="field">
-	              <span>{t("runnerMode")}</span>
+              <span>{t("runnerMode")}</span>
               <select
                 value={config.runtime.runnerMode}
                 onChange={(event) =>
-                  patchConfig((current) => ({
-                    ...current,
-                    runtime: { ...current.runtime, runnerMode: event.target.value as AgentsConfig["runtime"]["runnerMode"] },
-                  }))
+                  patchRuntime({ runnerMode: event.target.value as AgentsConfig["runtime"]["runnerMode"] })
                 }
               >
                 <option value="auto">auto</option>
@@ -461,11 +529,29 @@ export function SettingsPanel({
               </select>
             </label>
             <label className="field">
-	              <span>{t("openVsCodeUrl")}</span>
-              <input value={settings.openVsCodeUrl} onChange={(event) => patchSettings({ openVsCodeUrl: event.target.value })} placeholder="http://127.0.0.1:3001" />
+              <span>{t("agentMode")}</span>
+              <select value={config.runtime.agentMode} onChange={(event) => patchRuntime({ agentMode: event.target.value as AgentRunMode })}>
+                <option value="plan">{t("planMode")}</option>
+                <option value="coding">{t("codingMode")}</option>
+              </select>
             </label>
             <label className="field">
-	              <span>{t("previewUrl")}</span>
+              <span>{t("actionPolicy")}</span>
+              <select value={config.runtime.actionPolicy} onChange={(event) => patchRuntime({ actionPolicy: event.target.value as ActionPolicy })}>
+                <option value="confirm">{t("confirmActions")}</option>
+                <option value="auto-confirm">{t("autoConfirmActions")}</option>
+                <option value="full-access">{t("fullAccess")}</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>{t("theme")}</span>
+              <select value={settings.theme} onChange={(event) => patchSettings({ theme: event.target.value as DevHubSettings["theme"] })}>
+                <option value="dark">{t("darkTheme")}</option>
+                <option value="light">{t("lightTheme")}</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>{t("previewUrl")}</span>
               <input value={settings.previewUrl} onChange={(event) => patchSettings({ previewUrl: event.target.value })} />
             </label>
           </div>
@@ -476,18 +562,18 @@ export function SettingsPanel({
           <div className="guardrail-grid">
             <article>
               <ShieldCheck size={20} />
-	              <strong>{t("scopedGitWrites")}</strong>
-	              <span>{t("scopedGitWritesDesc")}</span>
+              <strong>{t("actionPolicy")}</strong>
+              <span>{t("actionPolicyDesc")}</span>
             </article>
             <article>
-              <TestTube2 size={20} />
-	              <strong>{t("verifyBeforePr")}</strong>
-	              <span>{t("verifyBeforePrDesc")}</span>
+              <CheckCircle2 size={20} />
+              <strong>{t("verifyBeforePr")}</strong>
+              <span>{t("verifyBeforePrDesc")}</span>
             </article>
             <article>
               <Cpu size={20} />
-	              <strong>{t("modelRouting")}</strong>
-	              <span>{t("modelRoutingDesc")}</span>
+              <strong>{t("modelRouting")}</strong>
+              <span>{t("modelRoutingDesc")}</span>
             </article>
           </div>
         </section>

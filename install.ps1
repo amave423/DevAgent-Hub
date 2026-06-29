@@ -10,6 +10,9 @@ param(
   [string]$AgentModels = "",
   [string]$RunnerMode = "",
   [string]$Proxy = "",
+  [switch]$ExternalAccess,
+  [string]$AuthToken = "",
+  [int]$Port = 3000,
   [string]$OpenRouterApiKey = "",
   [string]$OpenAIApiKey = "",
   [string]$CustomApiKey = ""
@@ -156,6 +159,9 @@ if ($Model) { $argsList += @("--model", $Model) }
 if ($AgentModels) { $argsList += @("--agent-models", $AgentModels) }
 if ($RunnerMode) { $argsList += @("--runner-mode", $RunnerMode) }
 if ($Proxy) { $argsList += @("--proxy", $Proxy) }
+if ($ExternalAccess) { $argsList += "--external-access" }
+if ($AuthToken) { $argsList += @("--auth-token", $AuthToken) }
+if ($Port -and $Port -ne 3000) { $argsList += @("--port", "$Port") }
 if ($OpenRouterApiKey) { $argsList += @("--openrouter-api-key", $OpenRouterApiKey) }
 if ($OpenAIApiKey) { $argsList += @("--openai-api-key", $OpenAIApiKey) }
 if ($CustomApiKey) { $argsList += @("--custom-api-key", $CustomApiKey) }

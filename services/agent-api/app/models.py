@@ -7,6 +7,10 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 class ModelKind(str, Enum):
     local = "local"
     cloud = "cloud"
@@ -24,6 +28,17 @@ class TaskStatus(str, Enum):
     completed = "completed"
     failed = "failed"
     cancelled = "cancelled"
+
+
+class AgentRunMode(str, Enum):
+    plan = "plan"
+    coding = "coding"
+
+
+class ActionPolicy(str, Enum):
+    confirm = "confirm"
+    auto_confirm = "auto-confirm"
+    full_access = "full-access"
 
 
 class ModelRequirements(BaseModel):
@@ -99,6 +114,12 @@ class ModelDownloadState(BaseModel):
     progress: int = Field(ge=0, le=100)
     message: str = ""
     model: AgentModel | None = None
+    modelName: str | None = None
+    repoId: str | None = None
+    filename: str | None = None
+    displayName: str | None = None
+    createdAt: datetime = Field(default_factory=utc_now)
+    updatedAt: datetime = Field(default_factory=utc_now)
 
 
 class AddCloudModelRequest(BaseModel):
@@ -109,6 +130,20 @@ class AddCloudModelRequest(BaseModel):
     apiKeyEnv: str | None = None
     apiKey: str | None = None
     description: str = ""
+
+
+class CloudModelTestRequest(BaseModel):
+    name: str = Field(min_length=1)
+    provider: str = Field(default="custom", min_length=2)
+    baseUrl: str | None = None
+    apiKeyEnv: str | None = None
+    apiKey: str | None = None
+
+
+class CloudModelTestResponse(BaseModel):
+    ok: bool
+    message: str
+    output: str = ""
 
 
 class AgentDefinition(BaseModel):
@@ -124,6 +159,8 @@ class RuntimeConfig(BaseModel):
     maxParallelTasks: int = Field(default=2, ge=1, le=16)
     logRetention: int = Field(default=2000, ge=100, le=100000)
     runnerMode: Literal["auto", "live", "mock"] = "auto"
+    agentMode: AgentRunMode = AgentRunMode.plan
+    actionPolicy: ActionPolicy = ActionPolicy.confirm
     requestTimeoutSeconds: int = Field(default=120, ge=5, le=600)
     maxOutputChars: int = Field(default=12000, ge=1000, le=100000)
 
@@ -139,6 +176,8 @@ class RunAgentsRequest(BaseModel):
     task: str = Field(min_length=1)
     agents: list[AgentDefinition] | None = None
     modelOverrides: dict[str, str] = Field(default_factory=dict)
+    mode: AgentRunMode | None = None
+    actionPolicy: ActionPolicy | None = None
 
 
 class RunAgentsResponse(BaseModel):
@@ -168,6 +207,46 @@ class TaskState(BaseModel):
     result: str | None = None
     error: str | None = None
     activeAgentId: str | None = None
+    mode: AgentRunMode = AgentRunMode.plan
+    actionPolicy: ActionPolicy = ActionPolicy.confirm
+
+
+class RuntimeSettings(BaseModel):
+    theme: Literal["dark", "light"] = "dark"
+    agentMode: AgentRunMode = AgentRunMode.plan
+    actionPolicy: ActionPolicy = ActionPolicy.confirm
+    externalAccess: bool = False
+    host: str = "127.0.0.1"
+    port: int = Field(default=3000, ge=1, le=65535)
+    authRequired: bool = False
+    authTokenConfigured: bool = False
+    urls: list[str] = Field(default_factory=list)
+
+
+class SaveRuntimeSettingsRequest(BaseModel):
+    theme: Literal["dark", "light"] | None = None
+    agentMode: AgentRunMode | None = None
+    actionPolicy: ActionPolicy | None = None
+
+
+class ActionStatus(str, Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+
+
+class PendingAction(BaseModel):
+    id: str
+    title: str
+    description: str = ""
+    kind: Literal["file", "git", "terminal", "github", "model"]
+    status: ActionStatus = ActionStatus.pending
+    createdAt: datetime = Field(default_factory=utc_now)
+
+
+class ActionDecisionResponse(BaseModel):
+    ok: bool
+    action: PendingAction
 
 
 class GitStatus(BaseModel):
@@ -252,7 +331,3 @@ class WorkspaceActionResponse(BaseModel):
     message: str
     output: str = ""
     url: str | None = None
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)

@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  cancelTask,
   getAgentsConfig,
   getTaskStatus,
   runAgents,
   saveAgentsConfig,
   subscribeToLogs,
-  cancelTask,
 } from "../api/agents";
+import { getRuntimeSettings, saveRuntimeSettings } from "../api/runtime";
 import type {
   AgentDefinition,
   AgentLogEvent,
+  AgentModel,
   AgentsConfig,
-  AppLanguage,
   DevHubSettings,
   ModelPurpose,
   ModelPurposeId,
@@ -21,31 +22,31 @@ import type {
 const SETTINGS_KEY = "devagent-hub.settings.v1";
 
 const purposeDefinitions: Array<Omit<ModelPurpose, "modelId">> = [
-	  {
-	    id: "planning",
-	    label: "Планирование",
-	    description: "Декомпозиция задач, архитектурные решения и планы запуска.",
-	  },
-	  {
-	    id: "coding",
-	    label: "Код",
-	    description: "Основная реализация, рефакторинг и генерация кода.",
-	  },
-	  {
-	    id: "review",
-	    label: "Ревью",
-	    description: "Критика, риски, безопасность и проверка качества.",
-	  },
-	  {
-	    id: "testing",
-	    label: "Тестирование",
-	    description: "Планы тестов, smoke-проверки и анализ регрессий.",
-	  },
-	  {
-	    id: "final",
-	    label: "Финал",
-	    description: "Итоговый ответ, описание патча и release notes.",
-	  },
+  {
+    id: "planning",
+    label: "Planning",
+    description: "Task decomposition, architecture choices and launch plans.",
+  },
+  {
+    id: "coding",
+    label: "Coding",
+    description: "Main implementation, refactoring and code generation.",
+  },
+  {
+    id: "review",
+    label: "Review",
+    description: "Critique, risks, security and quality checks.",
+  },
+  {
+    id: "testing",
+    label: "Testing",
+    description: "Test plans, smoke checks and regression analysis.",
+  },
+  {
+    id: "final",
+    label: "Final",
+    description: "Final answer, patch summary and release notes.",
+  },
 ];
 
 const agentPurposeMap: Record<string, ModelPurposeId> = {
@@ -65,23 +66,63 @@ export function useAgents() {
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const loadedConfigRef = useRef(false);
 
   useEffect(() => {
+    let cancelled = false;
     getAgentsConfig()
-      .then((loadedConfig) => {
-        setConfig(loadedConfig);
-        setSettings(loadSettings(loadedConfig));
+      .then(async (loadedConfig) => {
+        if (cancelled) return;
+        let normalizedConfig = normalizeConfig(loadedConfig);
+        let loadedSettings = loadSettings(normalizedConfig);
+        try {
+          const runtime = await getRuntimeSettings();
+          normalizedConfig = {
+            ...normalizedConfig,
+            runtime: {
+              ...normalizedConfig.runtime,
+              agentMode: runtime.agentMode,
+              actionPolicy: runtime.actionPolicy,
+            },
+          };
+          loadedSettings = { ...loadedSettings, theme: runtime.theme };
+        } catch {
+          // Runtime settings are optional during local dev boot.
+        }
+        if (!cancelled) {
+          setConfig(normalizedConfig);
+          setSettings(loadedSettings);
+        }
       })
       .catch((caught: Error) => setError(caught.message));
 
-    return () => eventSourceRef.current?.close();
+    return () => {
+      cancelled = true;
+      eventSourceRef.current?.close();
+    };
   }, []);
 
   useEffect(() => {
     if (settings) {
       window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      document.documentElement.dataset.theme = settings.theme;
     }
   }, [settings]);
+
+  useEffect(() => {
+    if (!config) return;
+    if (!loadedConfigRef.current) {
+      loadedConfigRef.current = true;
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void saveAgentsConfig(config)
+        .catch((caught: Error) => setError(caught.message));
+    }, 700);
+
+    return () => window.clearTimeout(timer);
+  }, [config]);
 
   const language = settings?.language ?? "ru";
 
@@ -95,7 +136,11 @@ export function useAgents() {
 
   const patchConfig = useCallback(
     (updater: (current: AgentsConfig) => AgentsConfig) => {
-      setConfig((current) => (current ? updater(current) : current));
+      setConfig((current) => {
+        if (!current) return current;
+        const next = updater(current);
+        return next === current ? current : normalizeConfig(next);
+      });
     },
     [],
   );
@@ -103,6 +148,9 @@ export function useAgents() {
   const patchSettings = useCallback(
     (patch: Partial<DevHubSettings>) => {
       setSettings((current) => (current ? { ...current, ...patch } : current));
+      if (patch.theme) {
+        void saveRuntimeSettings({ theme: patch.theme }).catch((caught: Error) => setError(caught.message));
+      }
     },
     [],
   );
@@ -113,10 +161,15 @@ export function useAgents() {
     setError(null);
     try {
       const saved = await saveAgentsConfig(config);
-      setConfig(saved);
+      setConfig(normalizeConfig(saved));
       window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      await saveRuntimeSettings({
+        theme: settings.theme,
+        agentMode: saved.runtime.agentMode,
+        actionPolicy: saved.runtime.actionPolicy,
+      });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Не удалось сохранить настройки.");
+      setError(caught instanceof Error ? caught.message : "Could not save settings.");
     } finally {
       setIsSaving(false);
     }
@@ -132,7 +185,7 @@ export function useAgents() {
     setTaskState(null);
 
     try {
-      const runtimeConfig = applyPurposeModels(config, settings);
+      const runtimeConfig = normalizeConfig(applyPurposeModels(config, settings));
       const response = await runAgents(taskText.trim(), runtimeConfig);
       const initialState = await getTaskStatus(response.taskId);
       setTaskState(initialState);
@@ -160,7 +213,7 @@ export function useAgents() {
         },
       });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Не удалось запустить цепочку агентов.");
+      setError(caught instanceof Error ? caught.message : "Could not start agent chain.");
       setIsRunning(false);
     }
   }
@@ -171,7 +224,7 @@ export function useAgents() {
       await cancelTask(taskState.taskId);
       setIsRunning(false);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Не удалось отменить задачу.");
+      setError(caught instanceof Error ? caught.message : "Could not cancel task.");
     }
   }
 
@@ -218,6 +271,7 @@ function loadSettings(config: AgentsConfig): DevHubSettings {
     return {
       ...fallback,
       ...parsed,
+      theme: parsed.theme ?? fallback.theme,
       modelPurposes: mergePurposes(config, parsed.modelPurposes),
     };
   } catch {
@@ -228,6 +282,7 @@ function loadSettings(config: AgentsConfig): DevHubSettings {
 function defaultSettings(config: AgentsConfig): DevHubSettings {
   return {
     language: "ru",
+    theme: "dark",
     openVsCodeUrl: "",
     previewUrl: "http://127.0.0.1:5173",
     githubOwner: "",
@@ -253,7 +308,7 @@ function choosePurposeModel(models: AgentModel[], purpose: ModelPurposeId, fallb
 
 function applyPurposeModels(config: AgentsConfig, settings: DevHubSettings): AgentsConfig {
   const purposeById = Object.fromEntries(settings.modelPurposes.map((purpose) => [purpose.id, purpose.modelId])) as Record<ModelPurposeId, string>;
-  return {
+  return normalizeConfig({
     ...config,
     agents: config.agents.map((agent) => {
       const purpose = agentPurposeMap[agent.id] ?? "coding";
@@ -262,7 +317,20 @@ function applyPurposeModels(config: AgentsConfig, settings: DevHubSettings): Age
         modelId: purposeById[purpose] ?? agent.modelId,
       };
     }),
-  };
+  });
 }
 
-import type { AgentModel } from "../types";
+function normalizeConfig(config: AgentsConfig): AgentsConfig {
+  return {
+    ...config,
+    runtime: {
+      maxParallelTasks: config.runtime?.maxParallelTasks ?? 2,
+      logRetention: config.runtime?.logRetention ?? 2000,
+      runnerMode: config.runtime?.runnerMode ?? "auto",
+      agentMode: config.runtime?.agentMode ?? "plan",
+      actionPolicy: config.runtime?.actionPolicy ?? "confirm",
+      requestTimeoutSeconds: config.runtime?.requestTimeoutSeconds ?? 120,
+      maxOutputChars: config.runtime?.maxOutputChars ?? 12000,
+    },
+  };
+}

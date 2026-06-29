@@ -37,6 +37,7 @@ export function Terminal() {
     term.loadAddon(webLinksAddon);
     term.open(containerRef.current);
     fitAddon.fit();
+    term.focus();
 
     const socket = connectTerminal();
     socket.onOutput = (data: string) => term.write(data);
@@ -51,7 +52,9 @@ export function Terminal() {
       socket.resize(cols, rows);
     };
 
+    const focusTerm = () => term.focus();
     window.addEventListener("resize", handleResize);
+    containerRef.current.addEventListener("click", focusTerm);
     xtermRef.current = term;
     fitRef.current = fitAddon;
 
@@ -60,6 +63,7 @@ export function Terminal() {
 
     return () => {
       window.removeEventListener("resize", handleResize);
+      containerRef.current?.removeEventListener("click", focusTerm);
       socket.close();
       term.dispose();
     };

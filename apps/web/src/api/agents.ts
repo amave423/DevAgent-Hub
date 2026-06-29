@@ -1,17 +1,11 @@
 import type { AgentLogEvent, AgentsConfig, RunAgentsResponse, TaskState } from "../types";
-import { apiBaseUrl } from "./base";
+import { apiBaseUrl, authQuery, devHubFetch } from "./base";
 
 // Re-export TaskState for convenience
 export type { TaskState };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl()}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
+  const response = await devHubFetch(path, init);
 
   if (!response.ok) {
     const details = await response.text();
@@ -39,6 +33,8 @@ export function runAgents(task: string, config: AgentsConfig): Promise<RunAgents
       task,
       agents: config.agents,
       modelOverrides: Object.fromEntries(config.agents.map((agent) => [agent.id, agent.modelId])),
+      mode: config.runtime.agentMode,
+      actionPolicy: config.runtime.actionPolicy,
     }),
   });
 }
@@ -61,7 +57,9 @@ export function subscribeToLogs(
     onError: (error: Error) => void;
   },
 ): EventSource {
-  const source = new EventSource(`${apiBaseUrl()}/api/agents/logs/${taskId}`);
+  const query = authQuery();
+  const separator = query ? `?${query}` : "";
+  const source = new EventSource(`${apiBaseUrl()}/api/agents/logs/${taskId}${separator}`);
 
   source.addEventListener("log", (event) => {
     handlers.onLog(JSON.parse((event as MessageEvent).data) as AgentLogEvent);

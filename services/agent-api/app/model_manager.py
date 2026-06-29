@@ -1,20 +1,25 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 import shutil
 import subprocess
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
 
 from .config_store import ConfigStore
+from .llm import OpenAIProvider
 from .models import (
     AddCloudModelRequest,
     AgentModel,
     AgentsConfig,
+    CloudModelTestRequest,
+    CloudModelTestResponse,
     CloudProviderPreset,
     LocalModelCatalogItem,
     LocalModelSource,
@@ -22,10 +27,11 @@ from .models import (
     ModelDownloadRequest,
     ModelDownloadState,
     ModelFileListResponse,
-    ModelSearchResponse,
     ModelKind,
     ModelRequirements,
+    ModelSearchResponse,
     TaskStatus,
+    utc_now,
 )
 
 
@@ -36,7 +42,7 @@ LOCAL_MODEL_CATALOG = [
         name="Qwen2.5 Coder 7B",
         provider="ollama",
         modelName="qwen2.5-coder:7b",
-        description="Сильная локальная модель для кода с умеренными требованиями к железу.",
+        description="Recommended local coding model with a good speed/quality balance.",
         requirements=ModelRequirements(ramGb=8, diskGb=5),
     ),
     LocalModelCatalogItem(
@@ -45,7 +51,7 @@ LOCAL_MODEL_CATALOG = [
         name="DeepSeek Coder 6.7B",
         provider="ollama",
         modelName="deepseek-coder:6.7b",
-        description="Хороший локальный вариант для генерации и исправления кода.",
+        description="Strong local model for code generation and edits.",
         requirements=ModelRequirements(ramGb=10, diskGb=6),
     ),
     LocalModelCatalogItem(
@@ -54,7 +60,7 @@ LOCAL_MODEL_CATALOG = [
         name="Qwen2.5 Coder 14B",
         provider="ollama",
         modelName="qwen2.5-coder:14b",
-        description="Stronger local coding model, needs more RAM than 7B.",
+        description="Higher quality local coding model, requires more RAM.",
         requirements=ModelRequirements(ramGb=16, diskGb=9),
     ),
     LocalModelCatalogItem(
@@ -81,7 +87,7 @@ LOCAL_MODEL_CATALOG = [
         name="Llama 3.2 3B",
         provider="ollama",
         modelName="llama3.2:3b",
-        description="Быстрая лёгкая модель для коротких задач, планов и черновиков.",
+        description="Fast local model for short tasks, drafts and plans.",
         requirements=ModelRequirements(ramGb=4, diskGb=3),
     ),
     LocalModelCatalogItem(
@@ -116,7 +122,7 @@ LOCAL_MODEL_CATALOG = [
         source=LocalModelSource.huggingface,
         name="Hugging Face file",
         provider="huggingface-local",
-        description="Скачивание конкретного файла модели из Hugging Face Hub по repo_id и filename.",
+        description="Download a concrete model file from Hugging Face Hub by repo_id and filename.",
         requirements=ModelRequirements(ramGb=0, diskGb=0),
         runnable=False,
     ),
@@ -129,21 +135,21 @@ CLOUD_PROVIDER_PRESETS = [
         name="OpenRouter",
         baseUrl="https://openrouter.ai/api/v1",
         apiKeyEnv="AGENT_STUDIO_OPENROUTER_API_KEY",
-        description="OpenAI-compatible маршрутизатор облачных моделей.",
+        description="OpenAI-compatible cloud model router.",
     ),
     CloudProviderPreset(
         id="openai",
         name="OpenAI",
         baseUrl="https://api.openai.com/v1",
         apiKeyEnv="AGENT_STUDIO_OPENAI_API_KEY",
-        description="Официальный OpenAI-compatible API.",
+        description="Official OpenAI-compatible API.",
     ),
     CloudProviderPreset(
         id="custom",
         name="Custom OpenAI-compatible",
         baseUrl="",
         apiKeyEnv="AGENT_STUDIO_API_KEY",
-        description="Любой совместимый API: свой proxy, reseller или self-hosted endpoint.",
+        description="Any OpenAI-compatible API, proxy, reseller or self-hosted endpoint.",
     ),
 ]
 
@@ -151,8 +157,9 @@ CLOUD_PROVIDER_PRESETS = [
 class ModelManager:
     def __init__(self, config_store: ConfigStore, workspace_root: Path) -> None:
         self.config_store = config_store
-        self.workspace_root = workspace_root
-        self.downloads: dict[str, ModelDownloadState] = {}
+        self.workspace_root = workspace_root.resolve()
+        self.downloads_path = self.workspace_root / ".devagent" / "model-downloads.json"
+        self.downloads: dict[str, ModelDownloadState] = self._load_downloads()
         self._workers: dict[str, asyncio.Task[None]] = {}
 
     def catalog(self) -> ModelCatalogResponse:
@@ -198,20 +205,55 @@ class ModelManager:
     async def start_download(self, request: ModelDownloadRequest) -> ModelDownloadState:
         item = self._resolve_catalog_item(request)
         download_id = str(uuid.uuid4())
+        now = utc_now()
         state = ModelDownloadState(
             downloadId=download_id,
             modelId=item.id,
             source=item.source,
             status=TaskStatus.queued,
             progress=0,
-            message="Загрузка поставлена в очередь.",
+            message="Download queued.",
+            modelName=request.modelName or item.modelName or item.name,
+            repoId=request.repoId or item.repoId,
+            filename=request.filename or item.filename,
+            displayName=request.displayName,
+            createdAt=now,
+            updatedAt=now,
         )
         self.downloads[download_id] = state
+        self._persist_downloads()
         self._workers[download_id] = asyncio.create_task(self._run_download(download_id, item, request))
         return state
 
+    def list_downloads(self) -> list[ModelDownloadState]:
+        return sorted(self.downloads.values(), key=lambda item: item.createdAt, reverse=True)
+
     def get_download(self, download_id: str) -> ModelDownloadState | None:
         return self.downloads.get(download_id)
+
+    async def retry_download(self, download_id: str) -> ModelDownloadState:
+        current = self.downloads.get(download_id)
+        if current is None:
+            raise KeyError("Model download not found")
+        return await self.start_download(
+            ModelDownloadRequest(
+                modelId=current.modelId,
+                source=current.source,
+                modelName=current.modelName,
+                repoId=current.repoId,
+                filename=current.filename,
+                displayName=current.displayName,
+            )
+        )
+
+    async def delete_local_model(self, source: str, model_ref: str) -> AgentsConfig:
+        normalized_source = LocalModelSource(source)
+        decoded_ref = urllib.parse.unquote(model_ref)
+        if normalized_source == LocalModelSource.ollama:
+            return await self._delete_ollama_model(decoded_ref)
+        if normalized_source == LocalModelSource.huggingface:
+            return self._delete_huggingface_model(decoded_ref)
+        raise ValueError(f"Unsupported local model source: {source}")
 
     def add_cloud_model(self, request: AddCloudModelRequest) -> AgentsConfig:
         provider = slugify(request.provider or "custom") or "custom"
@@ -234,6 +276,23 @@ class ModelManager:
         )
         return self._save_model(model)
 
+    async def test_cloud_model(self, request: CloudModelTestRequest) -> CloudModelTestResponse:
+        provider = request.provider.strip() or "custom"
+        api_key_env = (request.apiKeyEnv or default_api_key_env(provider)).strip()
+        api_key = (request.apiKey or "").strip() or (os.getenv(api_key_env) if api_key_env else "") or ""
+        base_url = (request.baseUrl or "").strip() or provider_base_url(provider) or None
+        client = OpenAIProvider(api_key=api_key, base_url=base_url)
+        output = await client.chat(
+            model=request.name.strip(),
+            messages=[
+                {"role": "system", "content": "Reply with a short health check."},
+                {"role": "user", "content": "Say OK if this model endpoint is reachable."},
+            ],
+            temperature=0,
+            max_tokens=64,
+        )
+        return CloudModelTestResponse(ok=True, message="Cloud model test succeeded.", output=output[:1000])
+
     async def _run_download(
         self,
         download_id: str,
@@ -241,7 +300,7 @@ class ModelManager:
         request: ModelDownloadRequest,
     ) -> None:
         try:
-            self._update(download_id, status=TaskStatus.running, progress=3, message="Загрузка началась.")
+            self._update(download_id, status=TaskStatus.running, progress=3, message="Download started.")
             if item.source == LocalModelSource.ollama:
                 model = await self._download_ollama(download_id, item)
             elif item.source == LocalModelSource.huggingface:
@@ -254,14 +313,15 @@ class ModelManager:
                 download_id,
                 status=TaskStatus.completed,
                 progress=100,
-                message="Модель скачана и добавлена в настройки.",
+                message="Model downloaded and added to settings.",
                 model=model,
             )
         except Exception as exc:
+            current = self.downloads[download_id]
             self._update(
                 download_id,
                 status=TaskStatus.failed,
-                progress=self.downloads[download_id].progress,
+                progress=current.progress,
                 message=str(exc),
             )
 
@@ -279,26 +339,27 @@ class ModelManager:
             stderr=asyncio.subprocess.STDOUT,
         )
 
+        assert process.stdout is not None
         while True:
-            assert process.stdout is not None
             raw_line = await process.stdout.readline()
             if not raw_line:
                 break
             line = raw_line.decode("utf-8", errors="replace").strip()
             percent = parse_percent(line)
-            progress = max(5, min(98, percent if percent is not None else self.downloads[download_id].progress))
-            self._update(download_id, progress=progress, message=line or f"Скачивание {model_name}...")
+            current = self.downloads[download_id].progress
+            progress = max(5, min(98, percent if percent is not None else current))
+            self._update(download_id, progress=progress, message=line or f"Downloading {model_name}...")
 
         code = await process.wait()
         if code != 0:
-            raise RuntimeError(f"ollama pull {model_name} завершился с кодом {code}.")
+            raise RuntimeError(f"ollama pull {model_name} exited with code {code}.")
 
         return AgentModel(
             id=item.id,
             name=model_name,
             provider="ollama",
             kind=ModelKind.local,
-            baseUrl=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+            baseUrl=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
             description=item.description,
             requirements=item.requirements,
         )
@@ -308,7 +369,7 @@ class ModelManager:
         if os.name == "nt":
             winget = shutil.which("winget")
             if not winget:
-                raise RuntimeError("Ollama is required for Ollama models, but winget was not found for automatic installation.")
+                raise RuntimeError("Ollama is required for Ollama models, but winget was not found.")
             result = await asyncio.to_thread(
                 subprocess.run,
                 [
@@ -332,7 +393,7 @@ class ModelManager:
             curl = shutil.which("curl")
             shell = shutil.which("sh")
             if not curl or not shell:
-                raise RuntimeError("Ollama is required, but curl/sh was not found for automatic installation.")
+                raise RuntimeError("Ollama is required, but curl/sh was not found.")
             result = await asyncio.to_thread(
                 subprocess.run,
                 [shell, "-c", "curl -fsSL https://ollama.com/install.sh | sh"],
@@ -347,7 +408,7 @@ class ModelManager:
 
         command = find_ollama_command()
         if not command:
-            raise RuntimeError("Ollama installation completed, but ollama executable was not found. Restart DevAgent Hub and try again.")
+            raise RuntimeError("Ollama installed, but the executable was not found. Restart DevAgent Hub and try again.")
         self._update(download_id, progress=15, message="Ollama runtime installed. Pulling selected model...")
         return command
 
@@ -360,14 +421,12 @@ class ModelManager:
         repo_id = (request.repoId or item.repoId or "").strip()
         filename = (request.filename or item.filename or "").strip()
         if not repo_id or not filename:
-            raise RuntimeError("Для Hugging Face укажи repo_id и filename конкретного файла модели.")
+            raise RuntimeError("For Hugging Face, provide both repo_id and filename.")
 
         try:
             from huggingface_hub import hf_hub_download
         except ImportError as exc:
-            raise RuntimeError(
-                "Python-пакет huggingface_hub не установлен. Запусти установку зависимостей или повтори install.ps1.",
-            ) from exc
+            raise RuntimeError("huggingface_hub is not installed. Re-run installer dependencies.") from exc
 
         target_dir = self.workspace_root / ".models" / "huggingface"
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -379,7 +438,7 @@ class ModelManager:
                 self._update(
                     download_id,
                     progress=min(95, max(10, current + 3)),
-                    message=f"Скачивание {repo_id}/{filename} из Hugging Face...",
+                    message=f"Downloading {repo_id}/{filename} from Hugging Face...",
                 )
                 await asyncio.sleep(1.0)
 
@@ -404,9 +463,69 @@ class ModelManager:
             provider="huggingface-local",
             kind=ModelKind.local,
             baseUrl=str(local_path),
-            description="Файл модели скачан из Hugging Face Hub. Для выполнения нужен подключенный локальный runtime.",
+            description="Model file downloaded from Hugging Face Hub. A local runtime integration is required to run it.",
             requirements=item.requirements,
         )
+
+    async def _delete_ollama_model(self, model_ref: str) -> AgentsConfig:
+        model_name = self._resolve_ollama_model_name(model_ref)
+        command = find_ollama_command()
+        if not command:
+            raise RuntimeError("Ollama executable was not found.")
+        result = await asyncio.to_thread(
+            subprocess.run,
+            [command, "rm", model_name],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=300,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or result.stdout.strip() or f"Could not delete {model_name}.")
+        return self._remove_models(lambda model: model.provider == "ollama" and (model.id == model_ref or model.name == model_name))
+
+    def _delete_huggingface_model(self, model_ref: str) -> AgentsConfig:
+        config = self.config_store.load()
+        model = next(
+            (
+                item for item in config.models
+                if item.provider == "huggingface-local" and (item.id == model_ref or item.name == model_ref)
+            ),
+            None,
+        )
+        if not model:
+            raise RuntimeError("Hugging Face model was not found in config.")
+        base_dir = (self.workspace_root / ".models" / "huggingface").resolve()
+        target = Path(model.baseUrl or "").resolve()
+        try:
+            target.relative_to(base_dir)
+        except ValueError as exc:
+            raise RuntimeError("Refusing to delete a file outside .models/huggingface.") from exc
+        if target.is_file():
+            target.unlink()
+        cleanup_empty_parents(target.parent, base_dir)
+        return self._remove_models(lambda item: item.id == model.id)
+
+    def _resolve_ollama_model_name(self, model_ref: str) -> str:
+        config = self.config_store.load()
+        model = next(
+            (
+                item for item in config.models
+                if item.provider == "ollama" and (item.id == model_ref or item.name == model_ref)
+            ),
+            None,
+        )
+        if model:
+            return model.name
+        catalog_item = next(
+            (
+                item for item in self.catalog().localModels
+                if item.id == model_ref or item.name == model_ref or item.modelName == model_ref
+            ),
+            None,
+        )
+        return catalog_item.modelName if catalog_item and catalog_item.modelName else model_ref
 
     def _resolve_catalog_item(self, request: ModelDownloadRequest) -> LocalModelCatalogItem:
         if request.source == LocalModelSource.ollama and request.modelName:
@@ -424,9 +543,43 @@ class ModelManager:
         models.append(model)
         return self.config_store.save(config.model_copy(update={"models": models}))
 
+    def _remove_models(self, predicate) -> AgentsConfig:
+        config = self.config_store.load()
+        models = [current for current in config.models if not predicate(current)]
+        return self.config_store.save(config.model_copy(update={"models": models}))
+
     def _update(self, download_id: str, **patch: object) -> None:
         current = self.downloads[download_id]
-        self.downloads[download_id] = current.model_copy(update=patch)
+        self.downloads[download_id] = current.model_copy(update={**patch, "updatedAt": utc_now()})
+        self._persist_downloads()
+
+    def _load_downloads(self) -> dict[str, ModelDownloadState]:
+        if not self.downloads_path.exists():
+            return {}
+        try:
+            payload = json.loads(self.downloads_path.read_text(encoding="utf-8"))
+            states = [ModelDownloadState.model_validate(item) for item in payload]
+        except Exception:
+            return {}
+        downloads = {}
+        for state in states:
+            if state.status in {TaskStatus.queued, TaskStatus.running}:
+                state = state.model_copy(
+                    update={
+                        "status": TaskStatus.failed,
+                        "message": "Download was interrupted because the service restarted. Use retry.",
+                        "updatedAt": utc_now(),
+                    }
+                )
+            downloads[state.downloadId] = state
+        return downloads
+
+    def _persist_downloads(self) -> None:
+        self.downloads_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = [state.model_dump(mode="json") for state in self.list_downloads()]
+        tmp_path = self.downloads_path.with_suffix(".tmp")
+        tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        tmp_path.replace(self.downloads_path)
 
 
 def find_ollama_command() -> str | None:
@@ -449,7 +602,6 @@ def ollama_installed_models() -> list[LocalModelCatalogItem]:
     try:
         request = urllib.request.Request("http://127.0.0.1:11434/api/tags", method="GET")
         with urllib.request.urlopen(request, timeout=2) as response:
-            import json
             payload = json.loads(response.read().decode("utf-8"))
     except (OSError, urllib.error.URLError, TimeoutError, ValueError):
         return []
@@ -544,7 +696,13 @@ def parse_percent(line: str) -> int | None:
     match = re.search(r"(\d{1,3})%", line)
     if not match:
         return None
-    return min(100, max(0, int(match.group(1))))
+    return max(0, min(100, int(match.group(1))))
+
+
+def slugify(value: str) -> str:
+    text = value.strip().lower()
+    text = re.sub(r"[^a-z0-9]+", "-", text)
+    return text.strip("-") or "model"
 
 
 def default_api_key_env(provider: str) -> str:
@@ -555,6 +713,20 @@ def default_api_key_env(provider: str) -> str:
     return "AGENT_STUDIO_API_KEY"
 
 
-def slugify(value: str) -> str:
-    slug = re.sub(r"[^a-zA-Z0-9._-]+", "-", value.strip().lower()).strip("-._")
-    return slug or "custom-model"
+def provider_base_url(provider: str) -> str:
+    if provider == "openai":
+        return "https://api.openai.com/v1"
+    if provider == "openrouter":
+        return "https://openrouter.ai/api/v1"
+    return ""
+
+
+def cleanup_empty_parents(start: Path, stop: Path) -> None:
+    current = start.resolve()
+    stop = stop.resolve()
+    while current != stop:
+        try:
+            current.rmdir()
+        except OSError:
+            return
+        current = current.parent

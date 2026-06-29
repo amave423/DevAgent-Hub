@@ -35,6 +35,8 @@ class TaskRegistry:
             progress=0,
             createdAt=now,
             updatedAt=now,
+            mode=request.mode or config.runtime.agentMode,
+            actionPolicy=request.actionPolicy or config.runtime.actionPolicy,
         )
         managed = ManagedTask(state=state)
         async with self._lock:
@@ -83,12 +85,12 @@ class TaskRegistry:
                 agentName=agent.name if agent else None,
                 phase=phase,
                 message=message,
-                progress=progress,
+                progress=max(0, min(100, progress)),
                 level=level,  # type: ignore[arg-type]
             )
             managed.next_log_id += 1
             managed.logs.append(log)
-            managed.state.progress = progress
+            managed.state.progress = log.progress
             managed.state.updatedAt = log.timestamp
             managed.state.activeAgentId = agent.id if agent else managed.state.activeAgentId
 
@@ -96,34 +98,38 @@ class TaskRegistry:
         try:
             agents = select_agents(request, config)
             if not agents:
-                raise ValueError("Нет включенных агентов для запуска цепочки.")
+                raise ValueError("No enabled agents are available for this run.")
 
+            run_mode = request.mode or config.runtime.agentMode
+            action_policy = request.actionPolicy or config.runtime.actionPolicy
             managed.state.status = TaskStatus.running
+            managed.state.mode = run_mode
+            managed.state.actionPolicy = action_policy
             await self.append_log(
                 managed,
                 phase="queue",
-                message="Задача принята и передана в мультиагентную цепочку.",
-                progress=2,
+                message=f"Task accepted. Mode: {run_mode.value}; action policy: {action_policy.value}.",
+                progress=0,
             )
 
-            step_weight = 90 / len(agents)
-            accumulated = 5
             previous_output = request.task
 
-            for agent in agents:
+            for index, agent in enumerate(agents):
                 if managed.cancelled:
                     raise asyncio.CancelledError()
 
                 model_id = request.modelOverrides.get(agent.id, agent.modelId)
                 model_info = next((m for m in config.models if m.id == model_id), None)
-                provider_id = model_info.provider if model_info else "mock"
+                provider_id = "mock" if config.runtime.runnerMode == "mock" else (model_info.provider if model_info else "mock")
+                progress_before = round((index / len(agents)) * 100)
+                progress_after = round(((index + 1) / len(agents)) * 100)
 
                 await self.append_log(
                     managed,
                     agent=agent,
                     phase="prompt",
-                    message=f"{agent.name}: подготовка запроса для модели {model_id}.",
-                    progress=round(accumulated),
+                    message=f"{agent.name}: preparing prompt for {model_id}.",
+                    progress=progress_before,
                     level="debug",
                 )
 
@@ -131,11 +137,10 @@ class TaskRegistry:
                     managed,
                     agent=agent,
                     phase="run",
-                    message=f"{agent.name}: выполнение шага над текущим вариантом результата.",
-                    progress=round(accumulated + step_weight * 0.45),
+                    message=f"{agent.name}: running model step.",
+                    progress=progress_before,
                 )
 
-                # Build messages for the LLM call
                 messages = [
                     {"role": "system", "content": agent.systemPrompt},
                     {"role": "user", "content": previous_output},
@@ -151,29 +156,33 @@ class TaskRegistry:
                         temperature=0.7,
                         max_tokens=config.runtime.maxOutputChars,
                     )
-                    previous_output = result or build_simulated_output(agent, previous_output)
+                    if not result.strip():
+                        raise RuntimeError(f"{agent.name}: model returned an empty response.")
+                    previous_output = result
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
-                    previous_output = build_simulated_output(agent, previous_output)
-                    await self.append_log(
-                        managed,
-                        agent=agent,
-                        phase="fallback",
-                        message=f"{agent.name}: ошибка вызова модели ({exc}), использован fallback.",
-                        progress=round(accumulated + step_weight * 0.7),
-                        level="warning",
-                    )
+                    if config.runtime.runnerMode == "mock" or provider_id == "mock":
+                        previous_output = build_simulated_output(agent, previous_output)
+                        await self.append_log(
+                            managed,
+                            agent=agent,
+                            phase="fallback",
+                            message=f"{agent.name}: mock output was used.",
+                            progress=progress_after,
+                            level="warning",
+                        )
+                    else:
+                        raise RuntimeError(f"{agent.name}: model call failed: {exc}") from exc
 
                 await self.append_log(
                     managed,
                     agent=agent,
                     phase="result",
-                    message=f"{agent.name}: шаг завершен, результат передан дальше.",
-                    progress=round(accumulated + step_weight * 0.85),
+                    message=f"{agent.name}: step completed.",
+                    progress=progress_after,
                     level="success",
                 )
-                accumulated += step_weight
 
             async with self._lock:
                 managed.state.status = TaskStatus.completed
@@ -185,7 +194,7 @@ class TaskRegistry:
             await self.append_log(
                 managed,
                 phase="complete",
-                message="Цепочка агентов завершила выполнение.",
+                message="Agent chain completed.",
                 progress=100,
                 level="success",
             )
@@ -196,7 +205,7 @@ class TaskRegistry:
             await self.append_log(
                 managed,
                 phase="cancelled",
-                message="Задача отменена пользователем.",
+                message="Task was cancelled by the user.",
                 progress=managed.state.progress,
                 level="warning",
             )
@@ -223,4 +232,4 @@ def build_simulated_output(agent: AgentDefinition, input_text: str) -> str:
     compact = " ".join(input_text.strip().split())
     if len(compact) > 260:
         compact = compact[:257] + "..."
-    return f"[{agent.name}] {compact}"
+    return f"[mock:{agent.name}] {compact}"

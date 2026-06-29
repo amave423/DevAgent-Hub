@@ -7,16 +7,10 @@ import type {
   WorkspaceActionResponse,
   WorkspaceStatus,
 } from "../types";
-import { apiBaseUrl } from "./base";
+import { devHubFetch } from "./base";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl()}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
+  const response = await devHubFetch(path, init);
 
   if (!response.ok) {
     const details = await response.text();

@@ -55,8 +55,12 @@ async function main() {
 
   console.log("\nDevAgent Hub is ready.");
   console.log(shouldStartService
-    ? "Web UI: http://127.0.0.1:3000"
+    ? `Web UI: http://127.0.0.1:${settings.servicePort || 3000}`
     : "Manual start: services/start-devagent-hub.ps1 on Windows, or services/install-linux-systemd.sh on Linux.");
+  if (settings.externalAccess) {
+    console.log(`LAN access: http://<this-machine-LAN-IP>:${settings.servicePort || 3000}`);
+    console.log("LAN token: services/secrets.env -> DEVAGENT_AUTH_TOKEN");
+  }
   console.log(`Install path: ${settings.installPath}`);
 }
 
@@ -79,6 +83,9 @@ async function collectSettings(args, modelOptions, agentOptions, interactive) {
     cloudProvider: args.cloudProvider || "openrouter",
     cloudBaseUrl: args.cloudBaseUrl || "",
     pullLocalModels: args.noModelPull ? false : args.pullLocalModels,
+    externalAccess: args.externalAccess || false,
+    authToken: args.authToken || "",
+    servicePort: args.port || args.servicePort || 3000,
     startService: args.startService,
   };
 
@@ -95,7 +102,6 @@ async function collectSettings(args, modelOptions, agentOptions, interactive) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {
     base.installPath = await question(rl, "Install path", base.installPath);
-    base.repoUrl = await question(rl, "Repository URL", base.repoUrl);
 
     const selectedModels = await promptModels(rl, modelOptions, base.selectedModelIds);
     base.selectedModelIds = selectedModels.map((model) => model.id);
@@ -131,6 +137,10 @@ async function collectSettings(args, modelOptions, agentOptions, interactive) {
     }
 
     base.startService = await yesNo(rl, "Install and start background service", true);
+    base.externalAccess = await yesNo(rl, "Allow access from other devices on the same LAN", false);
+    if (base.externalAccess) {
+      base.authToken = await question(rl, "LAN access token (empty to generate)", base.authToken);
+    }
     return base;
   } finally {
     rl.close();
@@ -302,9 +312,13 @@ async function ensureRepository(settings) {
 }
 
 async function writeSecretsEnv(settings) {
-  const entries = Object.entries(settings.apiKeys || {})
+  const entries = [];
+  if (settings.externalAccess && settings.authToken) {
+    entries.push(`DEVAGENT_AUTH_TOKEN=${settings.authToken}`);
+  }
+  entries.push(...Object.entries(settings.apiKeys || {})
     .filter(([, value]) => String(value || "").trim())
-    .map(([provider, value]) => `${providerApiKeyName(provider)}=${value}`);
+    .map(([provider, value]) => `${providerApiKeyName(provider)}=${value}`));
   if (settings.apiKey) {
     entries.push(`${providerApiKeyName(settings.cloudProvider)}=${settings.apiKey}`);
   }
@@ -429,13 +443,17 @@ function parseArgs(argv) {
     const [rawKey, inlineValue] = arg.slice(2).split("=", 2);
     const key = toCamelCase(rawKey);
 
-    if (["yes", "nonInteractive", "prepareOnly", "skipInstall", "skipService", "startService", "noModelPull", "help"].includes(key)) {
+    if (["yes", "nonInteractive", "prepareOnly", "skipInstall", "skipService", "startService", "noModelPull", "externalAccess", "help"].includes(key)) {
       result[key] = true;
       continue;
     }
 
     if (key === "noService") {
       result.skipService = true;
+      continue;
+    }
+    if (key === "noExternalAccess") {
+      result.externalAccess = false;
       continue;
     }
 
@@ -467,6 +485,10 @@ Options:
   --agent-models <pairs>          Comma-separated agent=model pairs.
   --runner-mode <auto|live|mock> Agent runner mode.
   --proxy <url>                  HTTP/HTTPS proxy URL.
+  --external-access              Bind the service to LAN with token protection.
+  --no-external-access           Force localhost-only service binding.
+  --auth-token <token>           Token for LAN API/terminal access.
+  --port <port>                  Service port, default 3000.
   --cloud-provider <provider>    openrouter, openai, or custom.
   --cloud-base-url <url>         Custom OpenAI-compatible base URL.
   --api-key <key>                Key written to services/secrets.env.

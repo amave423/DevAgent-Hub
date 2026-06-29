@@ -1,6 +1,8 @@
 import type {
   AddCloudModelRequest,
   AgentsConfig,
+  CloudModelTestRequest,
+  CloudModelTestResponse,
   LocalModelSource,
   ModelFileListResponse,
   ModelCatalogResponse,
@@ -8,16 +10,10 @@ import type {
   ModelDownloadState,
   ModelSearchResponse,
 } from "../types";
-import { apiBaseUrl } from "./base";
+import { devHubFetch } from "./base";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl()}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
+  const response = await devHubFetch(path, init);
 
   if (!response.ok) {
     const details = await response.text();
@@ -50,8 +46,32 @@ export function getLocalModelDownload(downloadId: string): Promise<ModelDownload
   return request<ModelDownloadState>(`/api/models/local/downloads/${downloadId}`);
 }
 
+export function listLocalModelDownloads(): Promise<ModelDownloadState[]> {
+  return request<ModelDownloadState[]>("/api/models/local/downloads");
+}
+
+export function retryLocalModelDownload(downloadId: string): Promise<ModelDownloadState> {
+  return request<ModelDownloadState>(`/api/models/local/downloads/${downloadId}/retry`, {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+export function deleteLocalModel(source: LocalModelSource, modelRef: string): Promise<AgentsConfig> {
+  return request<AgentsConfig>(`/api/models/local/${encodeURIComponent(source)}/${encodeURIComponent(modelRef)}`, {
+    method: "DELETE",
+  });
+}
+
 export function addCloudModel(payload: AddCloudModelRequest): Promise<AgentsConfig> {
   return request<AgentsConfig>("/api/models/cloud", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function testCloudModel(payload: CloudModelTestRequest): Promise<CloudModelTestResponse> {
+  return request<CloudModelTestResponse>("/api/models/cloud/test", {
     method: "POST",
     body: JSON.stringify(payload),
   });

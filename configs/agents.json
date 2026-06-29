@@ -6,7 +6,7 @@
       "name": "qwen2.5-coder:7b",
       "provider": "ollama",
       "kind": "local",
-      "baseUrl": "http://localhost:11434",
+      "baseUrl": "http://127.0.0.1:11434",
       "description": "Хороший баланс скорости и качества для тестовых задач.",
       "requirements": {
         "ramGb": 8,
@@ -18,7 +18,7 @@
       "name": "deepseek-coder:6.7b",
       "provider": "ollama",
       "kind": "local",
-      "baseUrl": "http://localhost:11434",
+      "baseUrl": "http://127.0.0.1:11434",
       "description": "Сильная локальная модель для генерации кода.",
       "requirements": {
         "ramGb": 10,
@@ -30,7 +30,7 @@
       "name": "deepseek-coder:33b",
       "provider": "ollama",
       "kind": "local",
-      "baseUrl": "http://localhost:11434",
+      "baseUrl": "http://127.0.0.1:11434",
       "description": "Максимальное качество среди локальных вариантов, требует больше ресурсов.",
       "requirements": {
         "ramGb": 24,
@@ -42,7 +42,7 @@
       "name": "llama3.2:3b",
       "provider": "ollama",
       "kind": "local",
-      "baseUrl": "http://localhost:11434",
+      "baseUrl": "http://127.0.0.1:11434",
       "description": "Быстрая локальная модель для коротких и простых задач.",
       "requirements": {
         "ramGb": 4,
@@ -120,6 +120,8 @@
     "maxParallelTasks": 2,
     "logRetention": 2000,
     "runnerMode": "auto",
+    "agentMode": "plan",
+    "actionPolicy": "confirm",
     "requestTimeoutSeconds": 120,
     "maxOutputChars": 12000
   }

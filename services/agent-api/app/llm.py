@@ -7,6 +7,7 @@ import json
 import os
 import time
 from typing import Any, Protocol, runtime_checkable
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 
@@ -38,8 +39,11 @@ class OllamaProvider:
     """Calls the local Ollama HTTP API."""
 
     def __init__(self, base_url: str | None = None) -> None:
-        self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
-        self._client = httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0))
+        self.base_url = normalize_ollama_base_url(base_url or os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"))
+        self._client = httpx.AsyncClient(
+            timeout=httpx.Timeout(180.0, connect=10.0),
+            trust_env=False,
+        )
 
     async def chat(
         self,
@@ -183,3 +187,15 @@ def get_provider(provider_id: str, model: dict[str, Any] | None = None) -> LLMPr
         api_key = (os.getenv(api_key_env) if api_key_env else "") or os.getenv("AGENT_STUDIO_API_KEY") or ""
 
     return OpenAIProvider(api_key=api_key, base_url=base_url)
+
+
+def normalize_ollama_base_url(raw_url: str) -> str:
+    """Keep Ollama on loopback and outside system proxy routing."""
+    cleaned = raw_url.strip() or "http://127.0.0.1:11434"
+    parsed = urlparse(cleaned)
+    if parsed.hostname == "localhost":
+        netloc = "127.0.0.1"
+        if parsed.port:
+            netloc = f"{netloc}:{parsed.port}"
+        cleaned = urlunparse(parsed._replace(netloc=netloc))
+    return cleaned.rstrip("/")

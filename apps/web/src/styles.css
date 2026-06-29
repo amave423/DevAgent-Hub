@@ -1048,3 +1048,185 @@ textarea:focus {
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+/* ----- ChatGPT-like chat layout ----- */
+.chatgpt-layout {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 14px;
+  overflow: hidden;
+}
+
+.chat-messages {
+  align-content: end;
+  overflow: auto;
+  margin-top: 0;
+  padding-bottom: 6px;
+}
+
+.chat-composer {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #2d3742;
+  border-radius: 8px;
+  background: #151b21;
+}
+
+.chat-composer textarea {
+  min-height: 42px;
+  max-height: 180px;
+  resize: none;
+}
+
+.reasoning-card {
+  border: 1px solid #2d3742;
+  border-radius: 8px;
+  background: #121820;
+}
+
+.reasoning-card summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.reasoning-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.reasoning-card summary span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.reasoning-card summary em {
+  color: #9fadba;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.reasoning-log {
+  display: grid;
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+
+.reasoning-log p {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 10px;
+  color: #c3ced8;
+  font-size: 13px;
+}
+
+.reasoning-log p.error {
+  color: #ffd7d7;
+}
+
+.download-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.chain-steps.vertical {
+  align-items: stretch;
+  padding: 0 14px 12px;
+}
+
+.chain-step-status {
+  color: #9fadba;
+}
+
+.chain-step.running .chain-step-status {
+  animation: none;
+}
+
+/* ----- Light theme overrides ----- */
+:root[data-theme="light"] {
+  color-scheme: light;
+  background: #f4f6f8;
+  color: #17212b;
+}
+
+:root[data-theme="light"] body,
+:root[data-theme="light"] .workbench {
+  background: #f4f6f8;
+}
+
+:root[data-theme="light"] .sidebar,
+:root[data-theme="light"] .topbar,
+:root[data-theme="light"] .right-rail,
+:root[data-theme="light"] .task-composer,
+:root[data-theme="light"] .message,
+:root[data-theme="light"] .rail-card,
+:root[data-theme="light"] .agent-card,
+:root[data-theme="light"] .github-panel article,
+:root[data-theme="light"] .settings-sections section,
+:root[data-theme="light"] .integration-card,
+:root[data-theme="light"] .chat-composer,
+:root[data-theme="light"] .reasoning-card,
+:root[data-theme="light"] .download-state,
+:root[data-theme="light"] .metric,
+:root[data-theme="light"] .purpose-row,
+:root[data-theme="light"] .model-detail-row,
+:root[data-theme="light"] .change-list {
+  border-color: #d6dde5;
+  background: #ffffff;
+}
+
+:root[data-theme="light"] .sidebar button:hover,
+:root[data-theme="light"] .sidebar button.active,
+:root[data-theme="light"] .icon-button:hover,
+:root[data-theme="light"] .secondary-button,
+:root[data-theme="light"] .secondary-link {
+  background: #eef2f6;
+}
+
+:root[data-theme="light"] .sidebar,
+:root[data-theme="light"] .topbar,
+:root[data-theme="light"] .right-rail {
+  border-color: #d6dde5;
+}
+
+:root[data-theme="light"] input,
+:root[data-theme="light"] select,
+:root[data-theme="light"] textarea {
+  color: #17212b;
+  border-color: #c8d2dd;
+  background: #ffffff;
+}
+
+:root[data-theme="light"] .brand span,
+:root[data-theme="light"] .section-heading span,
+:root[data-theme="light"] .agent-card small,
+:root[data-theme="light"] .integration-card span,
+:root[data-theme="light"] .metric span,
+:root[data-theme="light"] .purpose-row span,
+:root[data-theme="light"] .empty-tool-state p,
+:root[data-theme="light"] .settings-note,
+:root[data-theme="light"] .message p,
+:root[data-theme="light"] .reasoning-log p,
+:root[data-theme="light"] .model-detail-row span {
+  color: #586777;
+}
+
+:root[data-theme="light"] .message strong,
+:root[data-theme="light"] .metric strong,
+:root[data-theme="light"] .brand h1,
+:root[data-theme="light"] .section-heading h2,
+:root[data-theme="light"] .section-heading h3,
+:root[data-theme="light"] .settings-sections h3,
+:root[data-theme="light"] .field span {
+  color: #17212b;
+}

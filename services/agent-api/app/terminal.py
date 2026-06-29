@@ -5,24 +5,21 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import shutil
 import signal
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 
 
 class TerminalSession:
-    """A single PTY shell session."""
-
     def __init__(self, workspace_root: Path, shell: str | None = None) -> None:
         self.workspace_root = workspace_root.resolve()
         self.shell = shell or self._detect_shell()
         self.process: asyncio.subprocess.Process | None = None
-        self._stdout_task: asyncio.Task[None] | None = None
+        self.winpty = None
+        self._master_fd: int | None = None
 
     @staticmethod
     def _detect_shell() -> str:
@@ -31,60 +28,71 @@ class TerminalSession:
         return os.getenv("SHELL", "/bin/sh")
 
     async def start(self) -> None:
-        if self.process is not None:
-            return
         env = os.environ.copy()
         env["TERM"] = "xterm-256color"
         if sys.platform == "win32":
-            self.process = await asyncio.create_subprocess_shell(
-                self.shell,
-                cwd=str(self.workspace_root),
-                env=env,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
-        else:
-            import pty  # type: ignore[import-untyped]
+            await self._start_windows(env)
+            return
+        await self._start_unix(env)
 
-            master_fd, slave_fd = pty.openpty()
-            self.process = await asyncio.create_subprocess_shell(
-                self.shell,
-                cwd=str(self.workspace_root),
-                env=env,
-                stdin=slave_fd,
-                stdout=slave_fd,
-                stderr=slave_fd,
-                close_fds=True,
-            )
-            os.close(slave_fd)
-            self._master_fd = master_fd
+    async def _start_windows(self, env: dict[str, str]) -> None:
+        try:
+            from winpty import PtyProcess
+        except ImportError as exc:
+            raise RuntimeError("pywinpty is required for the Windows terminal. Re-run install.ps1.") from exc
+
+        self.winpty = await asyncio.to_thread(
+            PtyProcess.spawn,
+            self.shell,
+            cwd=str(self.workspace_root),
+            env=env,
+        )
+
+    async def _start_unix(self, env: dict[str, str]) -> None:
+        import pty  # type: ignore[import-untyped]
+
+        master_fd, slave_fd = pty.openpty()
+        self.process = await asyncio.create_subprocess_shell(
+            self.shell,
+            cwd=str(self.workspace_root),
+            env=env,
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            close_fds=True,
+            preexec_fn=os.setsid,
+        )
+        os.close(slave_fd)
+        self._master_fd = master_fd
 
     async def read_loop(self, ws: WebSocket) -> None:
-        try:
-            if sys.platform == "win32":
-                await self._read_windows(ws)
-            else:
-                await self._read_unix(ws)
-        except Exception:
-            pass
+        if sys.platform == "win32":
+            await self._read_windows(ws)
+            return
+        await self._read_unix(ws)
 
     async def _read_windows(self, ws: WebSocket) -> None:
-        assert self.process is not None
-        assert self.process.stdout is not None
+        assert self.winpty is not None
         while True:
-            data = await self.process.stdout.read(4096)
-            if not data:
+            if not self.winpty.isalive():
                 break
-            await ws.send_json({"type": "output", "data": data.decode("utf-8", errors="replace")})
+            try:
+                data = await asyncio.to_thread(self.winpty.read, 4096)
+            except EOFError:
+                break
+            if data:
+                await ws.send_json({"type": "output", "data": data})
+            else:
+                await asyncio.sleep(0.03)
 
     async def _read_unix(self, ws: WebSocket) -> None:
         loop = asyncio.get_running_loop()
-        assert hasattr(self, "_master_fd")
+        assert self._master_fd is not None
         fd = self._master_fd
 
         def _read() -> bytes:
             import select
+
             r, _, _ = select.select([fd], [], [], 0.1)
             if r:
                 return os.read(fd, 4096)
@@ -100,71 +108,80 @@ class TerminalSession:
                 await asyncio.sleep(0.05)
 
     async def write(self, data: str) -> None:
-        if self.process is None or self.process.stdin is None:
-            return
         if sys.platform == "win32":
-            self.process.stdin.write(data.encode("utf-8"))
-            await self.process.stdin.drain()
-        else:
-            import tty
-            import termios
-            assert hasattr(self, "_master_fd")
+            if self.winpty is not None:
+                await asyncio.to_thread(self.winpty.write, data)
+            return
+
+        if self._master_fd is not None:
             os.write(self._master_fd, data.encode("utf-8"))
 
     async def resize(self, cols: int, rows: int) -> None:
+        cols = max(20, min(cols, 300))
+        rows = max(5, min(rows, 120))
         if sys.platform == "win32":
+            if self.winpty is not None:
+                await asyncio.to_thread(self.winpty.set_size, cols, rows)
             return
-        assert hasattr(self, "_master_fd")
+
+        if self._master_fd is None:
+            return
         import fcntl
         import struct
         import termios
+
         winsize = struct.pack("HHHH", rows, cols, 0, 0)
         fcntl.ioctl(self._master_fd, termios.TIOCSWINSZ, winsize)
 
     async def close(self) -> None:
+        if sys.platform == "win32":
+            if self.winpty is not None and self.winpty.isalive():
+                await asyncio.to_thread(self.winpty.terminate)
+            return
+
         if self.process and self.process.returncode is None:
             try:
-                self.process.terminate()
+                os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
                 await asyncio.wait_for(self.process.wait(), timeout=5)
-            except (asyncio.TimeoutError, Exception):
+            except Exception:
                 try:
                     self.process.kill()
                 except Exception:
                     pass
-        if hasattr(self, "_master_fd"):
+        if self._master_fd is not None:
             try:
                 os.close(self._master_fd)
-            except Exception:
+            except OSError:
                 pass
 
 
 class TerminalManager:
-    """Manages terminal sessions (one per WebSocket connection)."""
-
     def __init__(self, workspace_root: Path) -> None:
         self.workspace_root = workspace_root
 
     async def handle(self, ws: WebSocket) -> None:
         await ws.accept()
         session = TerminalSession(self.workspace_root)
-        await session.start()
+        read_task: asyncio.Task[None] | None = None
         try:
-            await session.write("\r\nDevAgent Hub terminal ready.\r\n")
+            await session.start()
             read_task = asyncio.create_task(session.read_loop(ws))
+            await session.write("\r\nDevAgent Hub terminal ready.\r\n")
             while True:
                 message = await ws.receive_text()
                 payload = json.loads(message)
                 msg_type = payload.get("type")
                 if msg_type == "input":
-                    await session.write(payload.get("data", ""))
+                    await session.write(str(payload.get("data", "")))
                 elif msg_type == "resize":
                     await session.resize(int(payload.get("cols", 80)), int(payload.get("rows", 24)))
         except WebSocketDisconnect:
             pass
         finally:
-            read_task.cancel()
-            try:
-                await read_task
-            except (asyncio.CancelledError, Exception):
-                pass
+            if read_task is not None:
+                read_task.cancel()
+                try:
+                    await read_task
+                except (asyncio.CancelledError, Exception):
+                    pass
             await session.close()
