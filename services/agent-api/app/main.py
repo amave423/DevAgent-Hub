@@ -194,7 +194,7 @@ async def run_chat(chat_id: str, request: ChatRunRequest) -> RunAgentsResponse:
     attachment_context = chat_store.attachment_context(chat_id, request.attachmentIds)
     search_context = ""
     browser_context = ""
-    should_search = request.webSearch or should_auto_search(request.content, runtime_settings_store.load())
+    should_search = request.webSearch
     should_browse = request.browserAccess or should_auto_browse(request.content)
     if should_search:
         try:
@@ -220,7 +220,13 @@ async def run_chat(chat_id: str, request: ChatRunRequest) -> RunAgentsResponse:
                         metadata={"tool": "browser", "source": "web_search_results"},
                     )
         except Exception as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+            search_context = f"[Web search error]\n{exc}"
+            chat_store.add_message(
+                chat_id,
+                role="tool",
+                content=search_context,
+                metadata={"tool": "web_search", "error": str(exc)},
+            )
 
     direct_urls = extract_urls(request.content)
     if should_browse and direct_urls:
@@ -249,7 +255,31 @@ async def run_chat(chat_id: str, request: ChatRunRequest) -> RunAgentsResponse:
                         metadata={"tool": "browser_download"},
                     )
         except Exception as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+            browser_context = "\n\n".join(part for part in [browser_context, f"[Browser error]\n{exc}"] if part)
+            chat_store.add_message(
+                chat_id,
+                role="tool",
+                content=f"[Browser error]\n{exc}",
+                metadata={"tool": "browser", "error": str(exc)},
+            )
+    elif should_browse:
+        try:
+            browser_context = await browser_service.browse_context_for_query(request.content)
+            if browser_context:
+                chat_store.add_message(
+                    chat_id,
+                    role="tool",
+                    content=browser_context,
+                    metadata={"tool": "browser", "source": "browser_search"},
+                )
+        except Exception as exc:
+            browser_context = f"[Browser error]\n{exc}"
+            chat_store.add_message(
+                chat_id,
+                role="tool",
+                content=browser_context,
+                metadata={"tool": "browser", "error": str(exc)},
+            )
 
     task_parts = [request.content]
     if attachment_context:

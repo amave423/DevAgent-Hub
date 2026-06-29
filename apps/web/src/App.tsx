@@ -199,7 +199,7 @@ export function App() {
         {error && <div className="error-strip">{error}</div>}
         {workspaceNotice && <div className="notice-strip">{workspaceNotice}</div>}
 
-        <div className="workspace-layout">
+        <div className={`workspace-layout ${activeTab === "chat" ? "chat-active" : ""}`}>
           <section className="workbench">
             {activeTab === "chat" && (
               <ChatPanel
@@ -213,9 +213,7 @@ export function App() {
                 onCancel={handleCancel}
                 t={t}
                 config={config}
-                settings={settings}
                 patchRuntime={patchRuntime}
-                onOpenSettings={() => setActiveTab("settings")}
                 info={pageInfo(language, "chat")}
               />
             )}
@@ -274,10 +272,12 @@ export function App() {
             )}
           </section>
 
-          <aside className="right-rail">
-            <RunSummary taskState={taskState} logs={logs} enabledAgents={enabledAgents} t={t} />
-            <IntegrationCards statuses={integrationStatuses} t={t} />
-          </aside>
+          {activeTab !== "chat" && (
+            <aside className="right-rail">
+              <RunSummary taskState={taskState} logs={logs} enabledAgents={enabledAgents} t={t} />
+              <IntegrationCards statuses={integrationStatuses} t={t} />
+            </aside>
+          )}
         </div>
       </section>
     </main>

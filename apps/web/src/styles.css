@@ -367,6 +367,11 @@ a {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 330px;
+  overflow: hidden;
+}
+
+.workspace-layout.chat-active {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .workbench {
@@ -1265,6 +1270,7 @@ textarea:focus {
   gap: 0;
   padding: 0;
   overflow: hidden;
+  height: 100%;
 }
 
 .chat-history {
@@ -1358,7 +1364,7 @@ textarea:focus {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   gap: 10px;
-  padding: 14px 18px;
+  padding: 14px 18px 12px;
 }
 
 .chat-toolbar,
@@ -1466,7 +1472,7 @@ textarea:focus {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 8px 0 16px;
+  padding: 8px 0 18px;
 }
 
 .empty-chat-state {
@@ -1484,7 +1490,7 @@ textarea:focus {
 }
 
 .chat-bubble {
-  width: min(860px, 100%);
+  width: min(980px, 100%);
   display: grid;
   gap: 8px;
   padding: 13px 14px;
@@ -1505,7 +1511,7 @@ textarea:focus {
 }
 
 .chat-bubble.tool {
-  width: min(920px, 100%);
+  width: min(1040px, 100%);
   align-self: center;
   border-style: dashed;
   background: #121820;
@@ -1595,8 +1601,10 @@ textarea:focus {
 }
 
 .composer-row {
-  flex-wrap: nowrap;
+  display: grid;
+  grid-template-columns: 46px auto minmax(240px, 1fr) 46px auto;
   align-items: stretch;
+  gap: 8px;
 }
 
 .composer-row textarea {
@@ -1617,6 +1625,11 @@ textarea:focus {
   min-height: 46px;
 }
 
+.composer-row > .icon-button {
+  width: 46px;
+  height: 46px;
+}
+
 .composer-row > .primary-button,
 .composer-row > .danger-button {
   height: auto;
@@ -1625,6 +1638,7 @@ textarea:focus {
 
 .composer-modes {
   flex: 0 0 auto;
+  min-width: max-content;
 }
 
 .search-run-button.active {
@@ -1799,6 +1813,8 @@ textarea:focus {
 :root[data-theme="light"] .icon-button:hover,
 :root[data-theme="light"] .secondary-button,
 :root[data-theme="light"] .secondary-link {
+  color: var(--text);
+  border-color: var(--border-strong);
   background: #eef2f6;
 }
 
@@ -1806,6 +1822,18 @@ textarea:focus {
 :root[data-theme="light"] .topbar,
 :root[data-theme="light"] .right-rail {
   border-color: #d6dde5;
+}
+
+:root[data-theme="light"] .product-mark {
+  color: var(--accent-strong);
+  border-color: #d6dde5;
+}
+
+:root[data-theme="light"] .sidebar button::after {
+  color: var(--text-strong);
+  border-color: var(--border);
+  background: #ffffff;
+  box-shadow: var(--shadow);
 }
 
 :root[data-theme="light"] input,
@@ -1847,9 +1875,11 @@ textarea:focus {
 
 :root[data-theme="light"] .segmented button.active,
 :root[data-theme="light"] .tool-toggle.active,
-:root[data-theme="light"] .agent-chip-row button.active {
-  color: #0f2d25;
-  background: #dff5ed;
+:root[data-theme="light"] .agent-chip-row button.active,
+:root[data-theme="light"] .composer-modes button.active,
+:root[data-theme="light"] .search-run-button.active {
+  color: #ffffff;
+  background: var(--accent-strong);
 }
 
 :root[data-theme="light"] .main-surface,
@@ -1864,6 +1894,8 @@ textarea:focus {
 :root[data-theme="light"] .status-pill,
 :root[data-theme="light"] .runner-badge,
 :root[data-theme="light"] .compact-select select,
+:root[data-theme="light"] .segmented,
+:root[data-theme="light"] .composer-modes,
 :root[data-theme="light"] .chat-history-item,
 :root[data-theme="light"] .llm-audit-row,
 :root[data-theme="light"] .url-bar,
@@ -1874,6 +1906,18 @@ textarea:focus {
   color: var(--text);
   border-color: var(--border);
   background: var(--surface);
+}
+
+:root[data-theme="light"] .segmented button,
+:root[data-theme="light"] .composer-modes button,
+:root[data-theme="light"] .tool-toggle,
+:root[data-theme="light"] .agent-chip-row button {
+  color: #4b5b6a;
+  background: transparent;
+}
+
+:root[data-theme="light"] .chat-composer-v2 {
+  box-shadow: 0 10px 24px rgba(20, 31, 43, 0.08);
 }
 
 :root[data-theme="light"] .browser-results pre,
@@ -1896,6 +1940,30 @@ textarea:focus {
 :root[data-theme="light"] .primary-button {
   color: #ffffff;
   background: var(--accent-strong);
+}
+
+:root[data-theme="light"] .primary-button:hover {
+  background: #128269;
+}
+
+:root[data-theme="light"] .status-pill.ok,
+:root[data-theme="light"] .runner-badge.live {
+  color: #0f6b55;
+  border-color: #8ccfb7;
+  background: #e8f7f1;
+}
+
+:root[data-theme="light"] .status-pill.warn,
+:root[data-theme="light"] .runner-badge.mock {
+  color: #8a6508;
+  border-color: #ead18a;
+  background: #fff7dc;
+}
+
+:root[data-theme="light"] .status-pill.busy {
+  color: #176383;
+  border-color: #a8d5e8;
+  background: #eaf7fc;
 }
 
 :root[data-theme="light"] .danger-button,
@@ -1941,6 +2009,19 @@ textarea:focus {
   }
 
   .composer-row {
-    flex-wrap: wrap;
+    grid-template-columns: 46px 1fr 46px;
+  }
+
+  .composer-modes {
+    grid-column: 1 / -1;
+  }
+
+  .composer-row textarea {
+    grid-column: 2 / 3;
+  }
+
+  .composer-row > .primary-button,
+  .composer-row > .danger-button {
+    grid-column: 1 / -1;
   }
 }

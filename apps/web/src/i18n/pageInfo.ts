@@ -16,9 +16,9 @@ const ruInfo: Record<WorkbenchTab, PageInfoContent> = {
     title: "Информация о чате",
     intro: "Чат - основной экран для постановки задач агентам, просмотра ответов, вложений и хода выполнения.",
     sections: [
-      { title: "Что вводить", items: ["В поле ввода напиши задачу, вопрос или просьбу изменить проект.", "Кнопка вложений добавляет файлы к следующему сообщению.", "Кнопка \"Поиск в интернете\" запускает задачу с web search, если поиск настроен."] },
+      { title: "Что вводить", items: ["В поле ввода напиши задачу, вопрос или просьбу изменить проект.", "Кнопка вложений добавляет файлы к следующему сообщению.", "Кнопка \"Браузер\" разрешает backend открыть URL, найти страницы через Chromium, прочитать их текст и добавить этот контекст модели."] },
       { title: "Режимы", items: ["Планирование просит агента сначала разобрать задачу и предложить шаги.", "Кодинг предназначен для выполнения изменений в workspace с учетом политики подтверждений."] },
-      { title: "Ошибки", items: ["Если поиск не настроен, перейди в настройки и укажи SearxNG URL.", "Если модель недоступна, чат покажет реальную ошибку API без тихого fallback."] },
+      { title: "Ошибки", items: ["Если браузер недоступен, перезапусти установщик, чтобы поставить Playwright/Chromium.", "Если модель недоступна, чат покажет реальную ошибку API без тихого fallback."] },
     ],
   },
   agents: {
@@ -34,7 +34,7 @@ const ruInfo: Record<WorkbenchTab, PageInfoContent> = {
     intro: "Вкладка управляет headless Chromium, который DevAgent Hub использует для открытия сайтов, чтения страниц, скриншотов и скачивания файлов.",
     sections: [
       { title: "Что вводить", items: ["URL сайта или файла: https://example.com, https://site.com/file.pdf.", "Кнопка открытия читает видимый текст страницы и собирает ссылки.", "Скриншот сохраняет PNG в .devagent/browser/screenshots.", "Скачивание сохраняет файл в .devagent/browser/downloads."] },
-      { title: "Как это использует модель", items: ["В чате включи кнопку браузера, чтобы backend открыл URL из задачи.", "Если одновременно включен поиск в интернете, backend откроет первые результаты поиска и добавит текст страниц в контекст модели.", "На этом этапе браузер работает через backend tool, а не через визуальное окно пользователя."] },
+      { title: "Как это использует модель", items: ["В чате включи кнопку браузера, чтобы backend открыл URL из задачи.", "Если URL не указан, backend выполнит поиск через Chromium, откроет первые найденные страницы и добавит их текст в контекст модели.", "На этом этапе браузер работает через backend tool, а не через визуальное окно пользователя."] },
       { title: "Ошибки", items: ["Если Playwright или Chromium не установлены, перезапусти установщик.", "Некоторые сайты блокируют автоматизированный браузер или требуют логин/капчу."] },
     ],
   },
@@ -80,11 +80,11 @@ const ruInfo: Record<WorkbenchTab, PageInfoContent> = {
   },
   settings: {
     title: "Информация о настройках",
-    intro: "Настройки управляют моделями, API, runtime-режимами, темой и поиском в интернете.",
+    intro: "Настройки управляют моделями, API, runtime-режимами, темой и дополнительными интеграциями.",
     sections: [
       { title: "Локальные модели", items: ["Ollama-модели запускаются через локальный runtime Ollama.", "Hugging Face сейчас скачивает файлы в локальное хранилище; запуск HF-файлов будет отдельным runtime-этапом.", "Поиск модели помогает найти модель в каталоге или ввести имя вручную."] },
       { title: "Облачные API", items: ["Название в интерфейсе - удобное имя для пользователя.", "ID модели для API - настоящий model id, который отправляется провайдеру.", "Base URL - базовый адрес API, например https://api.openai.com/v1.", "Формат API выбирает OpenAI Chat Completions, Anthropic Messages или ручной OpenAI path.", "Endpoint path нужен, если reseller использует нестандартный путь."] },
-      { title: "Поиск в интернете", items: ["SearxNG URL - адрес SearxNG instance без /search.", "Проверка поиска отправляет JSON-запрос /search?format=json.", "Если URL не задан, кнопка поиска в чате не запускает задачу."] },
+      { title: "SearxNG, опционально", items: ["SearxNG URL - опциональный адрес собственного SearxNG instance без /search.", "Проверка поиска отправляет JSON-запрос /search?format=json.", "Для чата основной интернет-доступ теперь идет через кнопку \"Браузер\": Chromium сам ищет, открывает страницы и передает текст модели."] },
     ],
   },
 };
@@ -94,9 +94,9 @@ const enInfo: Record<WorkbenchTab, PageInfoContent> = {
     title: "Chat information",
     intro: "Chat is the main screen for tasks, answers, attachments and execution progress.",
     sections: [
-      { title: "Inputs", items: ["Write a task, question or project change request in the composer.", "The attachment button adds files to the next message.", "Internet search runs the task with web search when search is configured."] },
+      { title: "Inputs", items: ["Write a task, question or project change request in the composer.", "The attachment button adds files to the next message.", "The Browser button lets the backend open URLs, search through Chromium, read page text and pass that context to the model."] },
       { title: "Modes", items: ["Planning asks the agent to decompose the task first.", "Coding is for workspace changes with the selected action policy."] },
-      { title: "Errors", items: ["If search is not configured, set a SearxNG URL in settings.", "If a model is unavailable, the chat shows the real API error without silent fallback."] },
+      { title: "Errors", items: ["If the browser is unavailable, rerun the installer to install Playwright/Chromium.", "If a model is unavailable, the chat shows the real API error without silent fallback."] },
     ],
   },
   agents: {
@@ -112,7 +112,7 @@ const enInfo: Record<WorkbenchTab, PageInfoContent> = {
     intro: "This tab controls headless Chromium used by DevAgent Hub to open sites, read pages, take screenshots and download files.",
     sections: [
       { title: "Inputs", items: ["Enter a site or file URL: https://example.com, https://site.com/file.pdf.", "Open reads visible page text and collects links.", "Screenshot saves a PNG under .devagent/browser/screenshots.", "Download saves a file under .devagent/browser/downloads."] },
-      { title: "How the model uses it", items: ["Enable the browser button in chat so the backend opens URLs from the task.", "If internet search is also enabled, the backend opens the first search results and adds page text to model context.", "This stage uses a backend browser tool, not a visible user browser window."] },
+      { title: "How the model uses it", items: ["Enable the browser button in chat so the backend opens URLs from the task.", "If no URL is provided, the backend searches through Chromium, opens the first results and adds page text to model context.", "This stage uses a backend browser tool, not a visible user browser window."] },
       { title: "Errors", items: ["If Playwright or Chromium is missing, rerun the installer.", "Some sites block automated browsers or require login/captcha."] },
     ],
   },
@@ -158,11 +158,11 @@ const enInfo: Record<WorkbenchTab, PageInfoContent> = {
   },
   settings: {
     title: "Settings information",
-    intro: "Settings control models, APIs, runtime modes, theme and internet search.",
+    intro: "Settings control models, APIs, runtime modes, theme and optional integrations.",
     sections: [
       { title: "Local models", items: ["Ollama models run through the local Ollama runtime.", "Hugging Face downloads files into local storage; running HF files is a later runtime stage.", "Model search helps find catalog models or enter a name manually."] },
       { title: "Cloud APIs", items: ["Display name is the user-friendly name.", "API model ID is the real model id sent to the provider.", "Base URL is the API base, for example https://api.openai.com/v1.", "API format selects OpenAI Chat Completions, Anthropic Messages or custom OpenAI path.", "Endpoint path is needed when a reseller uses a non-standard path."] },
-      { title: "Internet search", items: ["SearxNG URL is the SearxNG instance address without /search.", "Search test sends a JSON request to /search?format=json.", "If URL is empty, the chat search button does not start a task."] },
+      { title: "SearxNG, optional", items: ["SearxNG URL is an optional self-hosted SearxNG instance address without /search.", "Search test sends a JSON request to /search?format=json.", "Chat internet access now uses the Browser button: Chromium searches, opens pages and passes page text to the model."] },
     ],
   },
 };

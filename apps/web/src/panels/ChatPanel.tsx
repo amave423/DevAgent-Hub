@@ -4,7 +4,6 @@ import {
   ChevronDown,
   Code2,
   Compass,
-  Globe2,
   Loader2,
   Paperclip,
   Plus,
@@ -25,7 +24,6 @@ import type {
   ChatMessage,
   ChatSession,
   ChatSummary,
-  DevHubSettings,
   LLMCallResult,
   TaskState,
 } from "../types";
@@ -38,7 +36,6 @@ interface RunOptions {
   chatId?: string;
   attachmentIds?: string[];
   agentIds?: string[];
-  webSearch?: boolean;
   browserAccess?: boolean;
 }
 
@@ -53,9 +50,7 @@ export function ChatPanel({
   onCancel,
   t,
   config,
-  settings,
   patchRuntime,
-  onOpenSettings,
   info,
 }: {
   language: AppLanguage;
@@ -68,16 +63,13 @@ export function ChatPanel({
   onCancel: () => void;
   t: (key: CopyKey) => string;
   config: AgentsConfig;
-  settings: DevHubSettings;
   patchRuntime: (patch: Partial<AgentsConfig["runtime"]>) => void;
-  onOpenSettings: () => void;
   info: PageInfoContent;
 }) {
   const [chatSummaries, setChatSummaries] = useState<ChatSummary[]>([]);
   const [activeChatId, setActiveChatId] = useState<string>("");
   const [activeChat, setActiveChat] = useState<ChatSession | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
-  const [webSearchEnabledForRun, setWebSearchEnabledForRun] = useState(false);
   const [browserAccessEnabledForRun, setBrowserAccessEnabledForRun] = useState(false);
   const [isLoadingChats, setIsLoadingChats] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
@@ -220,14 +212,8 @@ export function ChatPanel({
     }
   }
 
-  async function handleRunClick(forceWebSearch = false) {
+  async function handleRunClick() {
     if (!taskText.trim() || isRunning) return;
-    const shouldUseWebSearch = forceWebSearch || webSearchEnabledForRun;
-    if (shouldUseWebSearch && !settings.webSearchBaseUrl.trim()) {
-      setNotice(t("webSearchNotConfigured"));
-      onOpenSettings();
-      return;
-    }
     let chatId = activeChatId;
     if (!chatId) {
       const chat = await createChat();
@@ -244,7 +230,6 @@ export function ChatPanel({
       chatId,
       attachmentIds,
       agentIds,
-      webSearch: shouldUseWebSearch,
       browserAccess: browserAccessEnabledForRun,
     });
     await refreshActiveChat(chatId);
@@ -389,25 +374,6 @@ export function ChatPanel({
               placeholder={t("taskPlaceholder")}
               rows={1}
             />
-            <button
-              className={`icon-button search-run-button ${webSearchEnabledForRun ? "active" : ""}`}
-              type="button"
-              title={t("webSearch")}
-              onClick={() => {
-                if (!taskText.trim()) {
-                  setWebSearchEnabledForRun((current) => !current);
-                  if (!settings.webSearchBaseUrl.trim()) {
-                    setNotice(t("webSearchNotConfigured"));
-                    onOpenSettings();
-                  }
-                  return;
-                }
-                void handleRunClick(true);
-              }}
-              disabled={isRunning}
-            >
-              <Globe2 size={18} />
-            </button>
             <button
               className={`icon-button search-run-button ${browserAccessEnabledForRun ? "active" : ""}`}
               type="button"

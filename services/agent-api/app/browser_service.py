@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import uuid
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
 
 import httpx
 
@@ -130,6 +130,58 @@ class BrowserService:
             if text:
                 parts.append(f"[Browser page: {page.title or page.finalUrl}]\nURL: {page.finalUrl}\n{text}")
         return "\n\n".join(parts)
+
+    async def browse_context_for_query(self, query: str, max_pages: int = 3, max_chars_per_page: int = 12000) -> str:
+        results = await self.search(query, limit=max_pages)
+        if not results:
+            return f"[Browser search]\nNo browser search results found for: {query}"
+        urls = [link.url for link in results]
+        context = await self.browse_context_for_urls(urls, max_pages=max_pages, max_chars_per_page=max_chars_per_page)
+        search_lines = "\n".join(f"- {link.text or link.url}: {link.url}" for link in results)
+        return "\n\n".join(part for part in [f"[Browser search results]\n{search_lines}", context] if part)
+
+    async def search(self, query: str, limit: int = 5) -> list[BrowserLink]:
+        search_url = f"https://duckduckgo.com/html/?q={quote_plus(query)}"
+        async with await self._playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            context = await browser.new_context(ignore_https_errors=True)
+            page = await context.new_page()
+            try:
+                await page.goto(search_url, wait_until="domcontentloaded", timeout=45000)
+                raw_links = await page.eval_on_selector_all(
+                    "a.result__a, a[data-testid='result-title-a'], a[href]",
+                    """(items) => items.slice(0, 40).map((a) => ({
+                        text: (a.innerText || a.textContent || '').trim(),
+                        href: a.href || a.getAttribute('href')
+                    }))""",
+                )
+            finally:
+                await context.close()
+                await browser.close()
+
+        links: list[BrowserLink] = []
+        seen: set[str] = set()
+        for item in raw_links:
+            url = str(item.get("href") or "").strip()
+            text = str(item.get("text") or "").strip()
+            if not url.startswith(("http://", "https://")):
+                continue
+            parsed = urlparse(url)
+            if "duckduckgo.com" in parsed.netloc:
+                uddg = parse_qs(parsed.query).get("uddg", [])
+                if not uddg:
+                    continue
+                url = unquote(uddg[0])
+                parsed = urlparse(url)
+                if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                    continue
+            if url in seen:
+                continue
+            seen.add(url)
+            links.append(BrowserLink(text=text[:160], url=url))
+            if len(links) >= limit:
+                break
+        return links
 
     async def _playwright(self):
         try:

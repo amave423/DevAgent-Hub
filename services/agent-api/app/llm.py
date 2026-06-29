@@ -61,7 +61,7 @@ class OllamaProvider:
         request_url = f"{self.base_url}/api/chat"
         response = await self._client.post(request_url, json=payload)
         response.raise_for_status()
-        body = parse_json_response(response, request_url, self.api_format)
+        body = parse_json_response(response, request_url, "ollama")
         prompt_tokens = int(body.get("prompt_eval_count") or 0) or None
         completion_tokens = int(body.get("eval_count") or 0) or None
         total_tokens = (
@@ -336,6 +336,8 @@ def build_request_url(base_url: str | None, endpoint_path: str | None, default_p
     if not base:
         base = "https://api.openai.com/v1"
     path = (endpoint_path or "").strip()
+    if path.startswith(("http://", "https://")):
+        return path
     if not path:
         parsed = urlparse(base)
         if parsed.path.endswith(default_path) or parsed.path.endswith("/chat/completions") or parsed.path.endswith("/messages"):
@@ -343,6 +345,11 @@ def build_request_url(base_url: str | None, endpoint_path: str | None, default_p
         path = default_path
     if not path.startswith("/"):
         path = f"/{path}"
+    parsed = urlparse(base)
+    base_path = parsed.path.rstrip("/")
+    if base_path and (path == base_path or path.startswith(f"{base_path}/")):
+        origin = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+        return f"{origin}{path}"
     return f"{base}{path}"
 
 
