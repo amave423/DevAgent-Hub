@@ -637,15 +637,16 @@ def rewrite_openvscode_body(content: bytes, content_type: str) -> bytes:
 
 
 def maybe_mount_frontend() -> None:
-    if os.getenv("SERVE_FRONTEND", "").lower() not in {"1", "true", "yes"}:
-        return
-
     default_dist = Path(__file__).resolve().parents[3] / "apps" / "web" / "dist"
     dist_path = Path(os.getenv("DEVAGENT_WEB_DIST", str(default_dist))).resolve()
     index_path = dist_path / "index.html"
     assets_path = dist_path / "assets"
 
     if not index_path.exists():
+        return
+
+    serve_frontend = os.getenv("SERVE_FRONTEND", "").lower() in {"1", "true", "yes"}
+    if not serve_frontend and not os.getenv("DEVAGENT_WEB_DIST"):
         return
 
     if assets_path.exists():

@@ -901,7 +901,8 @@ function buildSystemdInstallScript() {
     "  sudo loginctl enable-linger \"$USER\" || true",
     "fi",
     "systemctl --user daemon-reload",
-    "systemctl --user enable --now devagent-hub.service",
+    "systemctl --user enable devagent-hub.service",
+    "systemctl --user restart devagent-hub.service",
     "systemctl --user status devagent-hub.service --no-pager",
     "",
   ].join("\n");
@@ -1052,7 +1053,8 @@ function buildReadme(settings, commands) {
   const serviceCommands = buildServiceCommands(settings);
   const urls = [`Web UI: ${serviceUrl(settings)}`];
   if (settings.externalAccess) {
-    urls.push("LAN URL: open http://<this-machine-LAN-IP>:" + settings.servicePort);
+    const detectedUrls = lanUrls(settings.servicePort);
+    urls.push(detectedUrls.length ? `LAN URL: ${detectedUrls.join(", ")}` : "LAN URL: open http://<this-machine-LAN-IP>:" + settings.servicePort);
     urls.push("LAN access token: stored in services/secrets.env as DEVAGENT_AUTH_TOKEN");
   }
   return [
@@ -1079,6 +1081,17 @@ function buildReadme(settings, commands) {
 
 function serviceUrl(settings) {
   return `http://127.0.0.1:${settings.servicePort || DEFAULT_SERVICE_PORT}`;
+}
+
+function lanUrls(port) {
+  const urls = [];
+  for (const entries of Object.values(os.networkInterfaces())) {
+    for (const entry of entries || []) {
+      if (entry.family !== "IPv4" || entry.internal) continue;
+      urls.push(`http://${entry.address}:${port}`);
+    }
+  }
+  return urls;
 }
 
 module.exports = {

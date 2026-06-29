@@ -3,6 +3,7 @@
 const { spawn } = require("node:child_process");
 const fs = require("node:fs/promises");
 const fsSync = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const readline = require("node:readline/promises");
 
@@ -58,7 +59,12 @@ async function main() {
     ? `Web UI: http://127.0.0.1:${settings.servicePort || 3000}`
     : "Manual start: services/start-devagent-hub.ps1 on Windows, or services/install-linux-systemd.sh on Linux.");
   if (settings.externalAccess) {
-    console.log(`LAN access: http://<this-machine-LAN-IP>:${settings.servicePort || 3000}`);
+    const urls = lanUrls(settings.servicePort || 3000);
+    if (urls.length) {
+      console.log(`LAN access: ${urls.join(", ")}`);
+    } else {
+      console.log(`LAN access: http://<this-machine-LAN-IP>:${settings.servicePort || 3000}`);
+    }
     console.log("LAN token: services/secrets.env -> DEVAGENT_AUTH_TOKEN");
   }
   console.log(`Install path: ${settings.installPath}`);
@@ -499,6 +505,17 @@ Options:
   --skip-service                 Do not install/start background service.
   --no-model-pull                Do not run ollama pull for local models.
 `);
+}
+
+function lanUrls(port) {
+  const urls = [];
+  for (const entries of Object.values(os.networkInterfaces())) {
+    for (const entry of entries || []) {
+      if (entry.family !== "IPv4" || entry.internal) continue;
+      urls.push(`http://${entry.address}:${port}`);
+    }
+  }
+  return urls;
 }
 
 main().catch((error) => {
