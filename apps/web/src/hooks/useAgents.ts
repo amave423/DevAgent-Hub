@@ -25,6 +25,7 @@ interface RunOptions {
   attachmentIds?: string[];
   agentIds?: string[];
   webSearch?: boolean;
+  browserAccess?: boolean;
 }
 
 const SETTINGS_KEY = "devagent-hub.settings.v1";
@@ -213,6 +214,7 @@ export function useAgents() {
             mode: runtimeConfig.runtime.agentMode,
             actionPolicy: runtimeConfig.runtime.actionPolicy,
             webSearch: Boolean(options.webSearch),
+            browserAccess: Boolean(options.browserAccess),
           })
         : await runAgents(taskText.trim(), runtimeConfig);
       const initialState = await getTaskStatus(response.taskId);

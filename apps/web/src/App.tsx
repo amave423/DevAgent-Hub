@@ -4,6 +4,7 @@ import {
   Activity,
   Bot,
   BrainCircuit,
+  Compass,
   Code2,
   Github,
   Globe2,
@@ -27,6 +28,7 @@ import { Metric } from "./components/Metric";
 import { IntegrationCards } from "./components/IntegrationCard";
 import { ChatPanel } from "./panels/ChatPanel";
 import { AgentsPanel } from "./panels/AgentsPanel";
+import { BrowserPanel } from "./panels/BrowserPanel";
 import { CodePanel } from "./panels/CodePanel";
 import { TerminalPanel } from "./panels/TerminalPanel";
 import { PreviewPanel } from "./panels/PreviewPanel";
@@ -42,6 +44,7 @@ import { normalizeAgentOrder } from "./utils";
 const tabs: Array<{ id: WorkbenchTab; icon: ReactNode; labelKey: CopyKey }> = [
   { id: "chat", icon: <MessageSquareText size={18} />, labelKey: "tabChat" },
   { id: "agents", icon: <BrainCircuit size={18} />, labelKey: "tabAgents" },
+  { id: "browser", icon: <Compass size={18} />, labelKey: "tabBrowser" },
   { id: "code", icon: <Code2 size={18} />, labelKey: "tabCode" },
   { id: "terminal", icon: <TerminalSquare size={18} />, labelKey: "tabTerminal" },
   { id: "preview", icon: <Globe2 size={18} />, labelKey: "tabPreview" },
@@ -227,6 +230,7 @@ export function App() {
                 info={pageInfo(language, "agents")}
               />
             )}
+            {activeTab === "browser" && <BrowserPanel t={t} info={pageInfo(language, "browser")} />}
             {activeTab === "code" && (
               <CodePanel
                 effectiveUrl={effectiveOpenVsCodeUrl}

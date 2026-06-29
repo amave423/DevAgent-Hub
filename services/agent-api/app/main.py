@@ -13,12 +13,20 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .chat_store import ChatStore
+from .browser_service import BrowserService, extract_urls
 from .config_store import ConfigStore
 from .model_manager import ModelManager
 from .models import (
     AddCloudModelRequest,
     ActionDecisionResponse,
     AgentsConfig,
+    BrowserDownloadRequest,
+    BrowserDownloadResponse,
+    BrowserOpenRequest,
+    BrowserPageResponse,
+    BrowserScreenshotRequest,
+    BrowserScreenshotResponse,
+    BrowserStatusResponse,
     ChatCreateRequest,
     ChatMessage,
     ChatMessageRequest,
@@ -70,6 +78,7 @@ terminal_manager = TerminalManager(workspace_service.root)
 runtime_settings_store = RuntimeSettingsStore(workspace_service.root)
 action_registry = ActionRegistry()
 web_search_service = WebSearchService()
+browser_service = BrowserService(workspace_service.root)
 
 app.add_middleware(
     CORSMiddleware,
@@ -184,7 +193,9 @@ async def run_chat(chat_id: str, request: ChatRunRequest) -> RunAgentsResponse:
 
     attachment_context = chat_store.attachment_context(chat_id, request.attachmentIds)
     search_context = ""
+    browser_context = ""
     should_search = request.webSearch or should_auto_search(request.content, runtime_settings_store.load())
+    should_browse = request.browserAccess or should_auto_browse(request.content)
     if should_search:
         try:
             search_response = await web_search_service.search(
@@ -198,6 +209,45 @@ async def run_chat(chat_id: str, request: ChatRunRequest) -> RunAgentsResponse:
                 content=search_context or "Web search returned no results.",
                 metadata={"tool": "web_search", "response": search_response.model_dump(mode="json")},
             )
+            if should_browse:
+                browser_urls = [result.url for result in search_response.results[:3]]
+                browser_context = await browser_service.browse_context_for_urls(browser_urls)
+                if browser_context:
+                    chat_store.add_message(
+                        chat_id,
+                        role="tool",
+                        content=browser_context,
+                        metadata={"tool": "browser", "source": "web_search_results"},
+                    )
+        except Exception as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    direct_urls = extract_urls(request.content)
+    if should_browse and direct_urls:
+        try:
+            direct_browser_context = await browser_service.browse_context_for_urls(direct_urls)
+            if direct_browser_context:
+                browser_context = "\n\n".join(part for part in [browser_context, direct_browser_context] if part)
+                chat_store.add_message(
+                    chat_id,
+                    role="tool",
+                    content=direct_browser_context,
+                    metadata={"tool": "browser", "source": "direct_urls"},
+                )
+            if should_auto_download(request.content):
+                download_lines = []
+                for url in direct_urls[:5]:
+                    download = await browser_service.download(BrowserDownloadRequest(url=url))
+                    download_lines.append(f"{download.url} -> {download.path} ({download.size} bytes)")
+                if download_lines:
+                    download_context = "[Browser downloads]\n" + "\n".join(download_lines)
+                    browser_context = "\n\n".join(part for part in [browser_context, download_context] if part)
+                    chat_store.add_message(
+                        chat_id,
+                        role="tool",
+                        content=download_context,
+                        metadata={"tool": "browser_download"},
+                    )
         except Exception as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -206,6 +256,8 @@ async def run_chat(chat_id: str, request: ChatRunRequest) -> RunAgentsResponse:
         task_parts.append("Attached files:\n" + attachment_context)
     if search_context:
         task_parts.append("Web search results:\n" + search_context)
+    if browser_context:
+        task_parts.append("Browser page content:\n" + browser_context)
     task_input = "\n\n".join(task_parts)
 
     run_request = RunAgentsRequest(
@@ -217,6 +269,7 @@ async def run_chat(chat_id: str, request: ChatRunRequest) -> RunAgentsResponse:
         chatId=chat_id,
         attachmentIds=request.attachmentIds,
         webSearch=should_search,
+        browserAccess=should_browse,
     )
     state = await task_registry.create(run_request, config)
     chat_store.add_message(
@@ -426,6 +479,35 @@ async def test_web_search(request: WebSearchRequest) -> WebSearchResponse:
             limit=request.limit,
             base_url=settings.webSearchBaseUrl,
         )
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/api/browser/status", response_model=BrowserStatusResponse)
+async def browser_status() -> BrowserStatusResponse:
+    return await browser_service.status()
+
+
+@app.post("/api/browser/open", response_model=BrowserPageResponse)
+async def browser_open(request: BrowserOpenRequest) -> BrowserPageResponse:
+    try:
+        return await browser_service.open(request)
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/browser/screenshot", response_model=BrowserScreenshotResponse)
+async def browser_screenshot(request: BrowserScreenshotRequest) -> BrowserScreenshotResponse:
+    try:
+        return await browser_service.screenshot(request)
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/browser/download", response_model=BrowserDownloadResponse)
+async def browser_download(request: BrowserDownloadRequest) -> BrowserDownloadResponse:
+    try:
+        return await browser_service.download(request)
     except Exception as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -757,6 +839,26 @@ def should_auto_search(content: str, settings: RuntimeSettings) -> bool:
         "web",
     )
     return any(marker in text for marker in markers)
+
+
+def should_auto_browse(content: str) -> bool:
+    text = content.lower()
+    markers = (
+        "открой сайт",
+        "прочитай сайт",
+        "прочитай страницу",
+        "скачай",
+        "download",
+        "open the site",
+        "read this page",
+        "read the page",
+    )
+    return bool(extract_urls(content)) and any(marker in text for marker in markers)
+
+
+def should_auto_download(content: str) -> bool:
+    text = content.lower()
+    return any(marker in text for marker in ("скачай", "загрузи файл", "download", "save file"))
 
 
 def format_search_context(response: WebSearchResponse) -> str:

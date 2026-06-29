@@ -79,6 +79,7 @@ export const ru = {
   taskCancelled: "Задача отменена",
   tabChat: "Чат",
   tabAgents: "Агенты",
+  tabBrowser: "Браузер",
   tabCode: "Код",
   tabTerminal: "Терминал",
   tabPreview: "Просмотр",
@@ -191,6 +192,16 @@ export const ru = {
   testingWebSearch: "Проверка поиска...",
   webSearchTestOk: "Поиск работает, результатов",
   searxngHelp: "SearxNG URL - адрес сервиса SearxNG без /search. DevAgent Hub отправляет JSON-запрос на /search?format=json.",
+  browserTitle: "Браузер",
+  browserSubtitle: "Управляемый Chromium для открытия сайтов, чтения страниц, скриншотов и скачивания файлов.",
+  browserUrl: "URL сайта или файла",
+  browserOpenRead: "Открыть и прочитать",
+  browserOpenScreenshot: "Открыть со скриншотом",
+  browserScreenshot: "Скриншот",
+  browserDownload: "Скачать файл",
+  browserDownloadResult: "Скачанный файл",
+  browserNoText: "Текст страницы не найден.",
+  browserAccess: "Дать агенту доступ к браузеру",
 } as const;
 
 export type CopyKey = keyof typeof ru;

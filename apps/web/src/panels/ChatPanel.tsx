@@ -3,6 +3,7 @@ import {
   Bot,
   ChevronDown,
   Code2,
+  Compass,
   Globe2,
   Loader2,
   Paperclip,
@@ -38,6 +39,7 @@ interface RunOptions {
   attachmentIds?: string[];
   agentIds?: string[];
   webSearch?: boolean;
+  browserAccess?: boolean;
 }
 
 export function ChatPanel({
@@ -76,6 +78,7 @@ export function ChatPanel({
   const [activeChat, setActiveChat] = useState<ChatSession | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [webSearchEnabledForRun, setWebSearchEnabledForRun] = useState(false);
+  const [browserAccessEnabledForRun, setBrowserAccessEnabledForRun] = useState(false);
   const [isLoadingChats, setIsLoadingChats] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -242,6 +245,7 @@ export function ChatPanel({
       attachmentIds,
       agentIds,
       webSearch: shouldUseWebSearch,
+      browserAccess: browserAccessEnabledForRun,
     });
     await refreshActiveChat(chatId);
   }
@@ -403,6 +407,15 @@ export function ChatPanel({
               disabled={isRunning}
             >
               <Globe2 size={18} />
+            </button>
+            <button
+              className={`icon-button search-run-button ${browserAccessEnabledForRun ? "active" : ""}`}
+              type="button"
+              title={t("browserAccess")}
+              onClick={() => setBrowserAccessEnabledForRun((current) => !current)}
+              disabled={isRunning}
+            >
+              <Compass size={18} />
             </button>
             {isRunning ? (
               <button className="danger-button" onClick={onCancel}>

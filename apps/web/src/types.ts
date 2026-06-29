@@ -10,6 +10,7 @@ export type CloudApiFormat = "openai-chat-completions" | "anthropic-messages" | 
 export type WorkbenchTab =
   | "chat"
   | "agents"
+  | "browser"
   | "code"
   | "terminal"
   | "preview"
@@ -353,6 +354,7 @@ export interface ChatRunRequest {
   actionPolicy?: ActionPolicy | null;
   agentIds: string[];
   webSearch: boolean;
+  browserAccess?: boolean;
 }
 
 export interface WebSearchResult {
@@ -365,6 +367,37 @@ export interface WebSearchResponse {
   query: string;
   provider: string;
   results: WebSearchResult[];
+}
+
+export interface BrowserStatusResponse {
+  available: boolean;
+  message: string;
+}
+
+export interface BrowserLink {
+  text: string;
+  url: string;
+}
+
+export interface BrowserPageResponse {
+  url: string;
+  finalUrl: string;
+  title: string;
+  text: string;
+  links: BrowserLink[];
+  screenshotPath?: string | null;
+}
+
+export interface BrowserDownloadResponse {
+  url: string;
+  path: string;
+  size: number;
+  contentType: string;
+}
+
+export interface BrowserScreenshotResponse {
+  url: string;
+  path: string;
 }
 
 export interface GitHubTokenTestResponse {

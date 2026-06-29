@@ -6,3 +6,4 @@ openai>=1.0
 websockets>=12.0
 huggingface_hub>=0.27
 pywinpty>=2.0; platform_system=="Windows"
+playwright>=1.49

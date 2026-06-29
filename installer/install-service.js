@@ -166,6 +166,16 @@ function buildInstallExecutionSteps(rawSettings) {
       timeoutMs: 300000,
     },
     {
+      id: "browser-runtime-install",
+      label: "Install browser automation runtime",
+      cwd: settings.installPath,
+      command: python,
+      args: process.platform === "win32"
+        ? ["-m", "playwright", "install", "chromium"]
+        : ["-m", "playwright", "install", "--with-deps", "chromium"],
+      timeoutMs: 900000,
+    },
+    {
       id: "node-deps",
       label: "Install Node.js dependencies",
       cwd: settings.installPath,
@@ -696,6 +706,7 @@ function buildInstallCommands(settings) {
       `Set-Location "${settings.installPath}"`,
       "py -3.12 -m venv .venv",
       ".\\.venv\\Scripts\\python.exe -m pip install -r .\\services\\agent-api\\requirements.txt",
+      ".\\.venv\\Scripts\\python.exe -m playwright install chromium",
       "npm install",
       "npm run build:web",
       editorInstallWin,
@@ -709,6 +720,7 @@ function buildInstallCommands(settings) {
     `cd "${settings.installPath}"`,
     "python3.12 -m venv .venv",
     "./.venv/bin/python -m pip install -r ./services/agent-api/requirements.txt",
+    "./.venv/bin/python -m playwright install --with-deps chromium",
     "npm install",
     "npm run build:web",
     editorInstallLinux,

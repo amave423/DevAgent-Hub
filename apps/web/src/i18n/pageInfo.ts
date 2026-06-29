@@ -29,6 +29,15 @@ const ruInfo: Record<WorkbenchTab, PageInfoContent> = {
       { title: "Порядок", items: ["Агенты выполняются сверху вниз.", "Выключенный агент не участвует в новых задачах."] },
     ],
   },
+  browser: {
+    title: "Информация о браузере",
+    intro: "Вкладка управляет headless Chromium, который DevAgent Hub использует для открытия сайтов, чтения страниц, скриншотов и скачивания файлов.",
+    sections: [
+      { title: "Что вводить", items: ["URL сайта или файла: https://example.com, https://site.com/file.pdf.", "Кнопка открытия читает видимый текст страницы и собирает ссылки.", "Скриншот сохраняет PNG в .devagent/browser/screenshots.", "Скачивание сохраняет файл в .devagent/browser/downloads."] },
+      { title: "Как это использует модель", items: ["В чате включи кнопку браузера, чтобы backend открыл URL из задачи.", "Если одновременно включен поиск в интернете, backend откроет первые результаты поиска и добавит текст страниц в контекст модели.", "На этом этапе браузер работает через backend tool, а не через визуальное окно пользователя."] },
+      { title: "Ошибки", items: ["Если Playwright или Chromium не установлены, перезапусти установщик.", "Некоторые сайты блокируют автоматизированный браузер или требуют логин/капчу."] },
+    ],
+  },
   code: {
     title: "Информация о редакторе кода",
     intro: "Вкладка встраивает OpenVSCode/code-server через same-origin адрес /ide/.",
@@ -96,6 +105,15 @@ const enInfo: Record<WorkbenchTab, PageInfoContent> = {
     sections: [
       { title: "Agent fields", items: ["Name is shown in progress and logs.", "Model chooses the local or cloud backend.", "Instruction defines the role; use No custom instruction for default behavior."] },
       { title: "Order", items: ["Agents run from top to bottom.", "Disabled agents are skipped for new tasks."] },
+    ],
+  },
+  browser: {
+    title: "Browser information",
+    intro: "This tab controls headless Chromium used by DevAgent Hub to open sites, read pages, take screenshots and download files.",
+    sections: [
+      { title: "Inputs", items: ["Enter a site or file URL: https://example.com, https://site.com/file.pdf.", "Open reads visible page text and collects links.", "Screenshot saves a PNG under .devagent/browser/screenshots.", "Download saves a file under .devagent/browser/downloads."] },
+      { title: "How the model uses it", items: ["Enable the browser button in chat so the backend opens URLs from the task.", "If internet search is also enabled, the backend opens the first search results and adds page text to model context.", "This stage uses a backend browser tool, not a visible user browser window."] },
+      { title: "Errors", items: ["If Playwright or Chromium is missing, rerun the installer.", "Some sites block automated browsers or require login/captcha."] },
     ],
   },
   code: {

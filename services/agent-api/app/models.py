@@ -210,6 +210,7 @@ class RunAgentsRequest(BaseModel):
     chatId: str | None = None
     attachmentIds: list[str] = Field(default_factory=list)
     webSearch: bool = False
+    browserAccess: bool = False
 
 
 class RunAgentsResponse(BaseModel):
@@ -427,6 +428,7 @@ class ChatRunRequest(BaseModel):
     actionPolicy: ActionPolicy | None = None
     agentIds: list[str] = Field(default_factory=list)
     webSearch: bool = False
+    browserAccess: bool = False
 
 
 class WebSearchRequest(BaseModel):
@@ -444,6 +446,53 @@ class WebSearchResponse(BaseModel):
     query: str
     provider: str
     results: list[WebSearchResult]
+
+
+class BrowserStatusResponse(BaseModel):
+    available: bool
+    message: str = ""
+
+
+class BrowserOpenRequest(BaseModel):
+    url: str = Field(min_length=1)
+    maxChars: int = Field(default=30000, ge=1000, le=200000)
+    screenshot: bool = False
+
+
+class BrowserLink(BaseModel):
+    text: str = ""
+    url: str
+
+
+class BrowserPageResponse(BaseModel):
+    url: str
+    finalUrl: str
+    title: str = ""
+    text: str = ""
+    links: list[BrowserLink] = Field(default_factory=list)
+    screenshotPath: str | None = None
+
+
+class BrowserDownloadRequest(BaseModel):
+    url: str = Field(min_length=1)
+    filename: str | None = None
+
+
+class BrowserDownloadResponse(BaseModel):
+    url: str
+    path: str
+    size: int = Field(ge=0)
+    contentType: str = ""
+
+
+class BrowserScreenshotRequest(BaseModel):
+    url: str = Field(min_length=1)
+    fullPage: bool = True
+
+
+class BrowserScreenshotResponse(BaseModel):
+    url: str
+    path: str
 
 
 class GitHubTokenRequest(BaseModel):
