@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import uuid
 from pathlib import Path
 from typing import Iterable
@@ -61,6 +62,19 @@ class ChatStore:
         if not path.exists():
             raise KeyError("Chat not found")
         return self._load_path(path)
+
+    def delete(self, chat_id: str) -> None:
+        path = self._path(chat_id)
+        if not path.exists():
+            raise KeyError("Chat not found")
+        path.unlink()
+        attachment_dir = (self.attachments_root / chat_id).resolve()
+        try:
+            attachment_dir.relative_to(self.attachments_root.resolve())
+        except ValueError:
+            return
+        if attachment_dir.exists():
+            shutil.rmtree(attachment_dir)
 
     def save(self, session: ChatSession) -> ChatSession:
         self.root.mkdir(parents=True, exist_ok=True)

@@ -1,18 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
-  CheckCircle2,
   ChevronDown,
   Code2,
   Globe2,
   Loader2,
   Paperclip,
   Plus,
-  Search,
   Send,
   StopCircle,
+  Trash2,
 } from "lucide-react";
-import { createChat, getChat, listChats, uploadChatAttachment } from "../api/chats";
+import { createChat, deleteChat, getChat, listChats, uploadChatAttachment } from "../api/chats";
+import { PanelHeader } from "../components/PanelHeader";
+import type { PageInfoContent } from "../i18n/pageInfo";
 import type {
   ActionPolicy,
   AgentLogEvent,
@@ -52,6 +53,8 @@ export function ChatPanel({
   config,
   settings,
   patchRuntime,
+  onOpenSettings,
+  info,
 }: {
   language: AppLanguage;
   taskText: string;
@@ -65,19 +68,19 @@ export function ChatPanel({
   config: AgentsConfig;
   settings: DevHubSettings;
   patchRuntime: (patch: Partial<AgentsConfig["runtime"]>) => void;
+  onOpenSettings: () => void;
+  info: PageInfoContent;
 }) {
   const [chatSummaries, setChatSummaries] = useState<ChatSummary[]>([]);
   const [activeChatId, setActiveChatId] = useState<string>("");
   const [activeChat, setActiveChat] = useState<ChatSession | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
-  const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>(() =>
-    config.agents.filter((agent) => agent.enabled).map((agent) => agent.id),
-  );
   const [webSearchEnabledForRun, setWebSearchEnabledForRun] = useState(false);
   const [isLoadingChats, setIsLoadingChats] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const enabledAgents = useMemo(
     () => config.agents.filter((agent) => agent.enabled).sort((left, right) => left.order - right.order),
@@ -85,12 +88,11 @@ export function ChatPanel({
   );
 
   useEffect(() => {
-    setSelectedAgentIds((current) => {
-      const enabledIds = enabledAgents.map((agent) => agent.id);
-      const stillValid = current.filter((id) => enabledIds.includes(id));
-      return stillValid.length > 0 ? stillValid : enabledIds;
-    });
-  }, [enabledAgents]);
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
+  }, [taskText]);
 
   useEffect(() => {
     let cancelled = false;
@@ -162,6 +164,34 @@ export function ChatPanel({
     await refreshChatList();
   }
 
+  async function handleDeleteChat(chatId: string) {
+    if (!window.confirm(t("deleteChatConfirm"))) return;
+    setNotice(null);
+    try {
+      await deleteChat(chatId);
+      const summaries = (await listChats()).filter((chat) => chat.id !== chatId);
+      if (summaries.length === 0) {
+        const created = await createChat();
+        setChatSummaries([{
+          id: created.id,
+          title: created.title,
+          createdAt: created.createdAt,
+          updatedAt: created.updatedAt,
+          lastMessage: "",
+        }]);
+        setActiveChat(created);
+        setActiveChatId(created.id);
+      } else {
+        setChatSummaries(summaries);
+        if (activeChatId === chatId) {
+          setActiveChatId(summaries[0].id);
+        }
+      }
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : "Could not delete chat.");
+    }
+  }
+
   async function handleAttachFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
     let chatId = activeChatId;
@@ -189,6 +219,12 @@ export function ChatPanel({
 
   async function handleRunClick(forceWebSearch = false) {
     if (!taskText.trim() || isRunning) return;
+    const shouldUseWebSearch = forceWebSearch || webSearchEnabledForRun;
+    if (shouldUseWebSearch && !settings.webSearchBaseUrl.trim()) {
+      setNotice(t("webSearchNotConfigured"));
+      onOpenSettings();
+      return;
+    }
     let chatId = activeChatId;
     if (!chatId) {
       const chat = await createChat();
@@ -197,7 +233,7 @@ export function ChatPanel({
       setActiveChatId(chat.id);
     }
     const attachmentIds = pendingAttachments.map((attachment) => attachment.id);
-    const agentIds = selectedAgentIds.length ? selectedAgentIds : enabledAgents.map((agent) => agent.id);
+    const agentIds = enabledAgents.map((agent) => agent.id);
     const content = taskText.trim();
     setTaskText("");
     setPendingAttachments([]);
@@ -205,7 +241,7 @@ export function ChatPanel({
       chatId,
       attachmentIds,
       agentIds,
-      webSearch: forceWebSearch || webSearchEnabledForRun,
+      webSearch: shouldUseWebSearch,
     });
     await refreshActiveChat(chatId);
   }
@@ -215,14 +251,6 @@ export function ChatPanel({
       e.preventDefault();
       void handleRunClick();
     }
-  }
-
-  function toggleAgent(agentId: string) {
-    setSelectedAgentIds((current) =>
-      current.includes(agentId)
-        ? current.filter((id) => id !== agentId)
-        : [...current, agentId],
-    );
   }
 
   function setMode(mode: AgentRunMode) {
@@ -248,41 +276,23 @@ export function ChatPanel({
         <div className="chat-history-list">
           {isLoadingChats && <span className="muted-line">{t("loading")}</span>}
           {chatSummaries.map((chat) => (
-            <button
-              key={chat.id}
-              className={chat.id === activeChatId ? "active" : ""}
-              onClick={() => setActiveChatId(chat.id)}
-              type="button"
-            >
-              <strong>{chat.title}</strong>
-              <span>{chat.lastMessage || formatDate(chat.updatedAt, language)}</span>
-            </button>
+            <div key={chat.id} className={`chat-history-item ${chat.id === activeChatId ? "active" : ""}`}>
+              <button onClick={() => setActiveChatId(chat.id)} type="button">
+                <strong>{chat.title}</strong>
+                <span>{chat.lastMessage || formatDate(chat.updatedAt, language)}</span>
+              </button>
+              <button className="icon-button danger-icon" type="button" title={t("deleteChat")} onClick={() => void handleDeleteChat(chat.id)}>
+                <Trash2 size={15} />
+              </button>
+            </div>
           ))}
         </div>
       </aside>
 
       <section className="chat-workspace">
+        <PanelHeader title={t("tabChat")} subtitle={t("emptyChatHint")} info={info} infoLabel={t("info")} />
         {notice && <div className="notice-strip inline">{notice}</div>}
         <div className="chat-toolbar">
-          <div className="segmented">
-            <button className={config.runtime.agentMode === "plan" ? "active" : ""} type="button" onClick={() => setMode("plan")}>
-              <Bot size={15} />
-              {t("planMode")}
-            </button>
-            <button className={config.runtime.agentMode === "coding" ? "active" : ""} type="button" onClick={() => setMode("coding")}>
-              <Code2 size={15} />
-              {t("codingMode")}
-            </button>
-          </div>
-          <button
-            className={`tool-toggle ${webSearchEnabledForRun ? "active" : ""}`}
-            type="button"
-            onClick={() => setWebSearchEnabledForRun((current) => !current)}
-            title={settings.webSearchBaseUrl ? t("webSearch") : t("webSearchNotConfigured")}
-          >
-            <Globe2 size={15} />
-            {t("webSearch")}
-          </button>
           <label className="compact-select">
             <span>{t("actionPolicy")}</span>
             <select value={config.runtime.actionPolicy} onChange={(event) => setPolicy(event.target.value as ActionPolicy)}>
@@ -292,20 +302,6 @@ export function ChatPanel({
             </select>
           </label>
           <span className={`runner-badge ${config.runtime.runnerMode}`}>{config.runtime.runnerMode}</span>
-        </div>
-
-        <div className="agent-chip-row" aria-label={t("selectedAgents")}>
-          {enabledAgents.map((agent) => {
-            const model = config.models.find((item) => item.id === agent.modelId);
-            const active = selectedAgentIds.includes(agent.id);
-            return (
-              <button key={agent.id} className={active ? "active" : ""} type="button" onClick={() => toggleAgent(agent.id)}>
-                {active && <CheckCircle2 size={14} />}
-                <span>{agent.name}</span>
-                <em>{model?.name ?? t("modelNotSet")}</em>
-              </button>
-            );
-          })}
         </div>
 
         <section className="chat-message-list">
@@ -371,7 +367,18 @@ export function ChatPanel({
             <button className="icon-button" type="button" title={t("attachments")} onClick={() => fileInputRef.current?.click()}>
               {isUploading ? <Loader2 className="spin" size={18} /> : <Paperclip size={18} />}
             </button>
+            <div className="segmented composer-modes" aria-label={t("agentMode")}>
+              <button className={config.runtime.agentMode === "plan" ? "active" : ""} type="button" onClick={() => setMode("plan")}>
+                <Bot size={15} />
+                {t("planMode")}
+              </button>
+              <button className={config.runtime.agentMode === "coding" ? "active" : ""} type="button" onClick={() => setMode("coding")}>
+                <Code2 size={15} />
+                {t("codingMode")}
+              </button>
+            </div>
             <textarea
+              ref={textareaRef}
               value={taskText}
               onChange={(event) => setTaskText(event.target.value)}
               onKeyDown={handleKeyDown}
@@ -379,16 +386,23 @@ export function ChatPanel({
               rows={1}
             />
             <button
-              className="icon-button search-run-button"
+              className={`icon-button search-run-button ${webSearchEnabledForRun ? "active" : ""}`}
               type="button"
               title={t("webSearch")}
               onClick={() => {
-                setWebSearchEnabledForRun(true);
+                if (!taskText.trim()) {
+                  setWebSearchEnabledForRun((current) => !current);
+                  if (!settings.webSearchBaseUrl.trim()) {
+                    setNotice(t("webSearchNotConfigured"));
+                    onOpenSettings();
+                  }
+                  return;
+                }
                 void handleRunClick(true);
               }}
-              disabled={!taskText.trim() || isRunning}
+              disabled={isRunning}
             >
-              <Search size={18} />
+              <Globe2 size={18} />
             </button>
             {isRunning ? (
               <button className="danger-button" onClick={onCancel}>
@@ -396,7 +410,7 @@ export function ChatPanel({
                 {t("cancel")}
               </button>
             ) : (
-              <button className="primary-button" onClick={() => void handleRunClick()} disabled={!taskText.trim() || selectedAgentIds.length === 0}>
+              <button className="primary-button" onClick={() => void handleRunClick()} disabled={!taskText.trim() || enabledAgents.length === 0}>
                 <Send size={16} />
                 {t("run")}
               </button>
@@ -451,6 +465,7 @@ function LLMAudit({ calls, t }: { calls: LLMCallResult[]; t: (key: CopyKey) => s
             <span>{call.provider}</span>
             <strong>{call.resolvedModel || call.requestedModel}</strong>
             {mismatch && <em>{t("modelMismatch")}: {call.requestedModel}</em>}
+            {call.requestUrl && <small>{call.requestUrl}</small>}
             <small>{tokens == null ? t("tokensNotReturned") : `${tokens} ${t("tokens")}`}</small>
             <small>{call.latencyMs} ms</small>
           </div>

@@ -54,6 +54,8 @@ class AgentModel(BaseModel):
     modelName: str | None = None
     baseUrl: str | None = None
     apiKeyEnv: str | None = None
+    apiFormat: Literal["openai-chat-completions", "anthropic-messages", "custom-openai-path"] | None = None
+    endpointPath: str | None = None
     description: str = ""
     requirements: ModelRequirements = Field(default_factory=lambda: ModelRequirements(ramGb=0, diskGb=0))
 
@@ -70,6 +72,7 @@ class LLMCallResult(BaseModel):
     requestedModel: str
     resolvedModel: str | None = None
     baseUrl: str | None = None
+    requestUrl: str | None = None
     usage: LLMUsage | None = None
     finishReason: str | None = None
     latencyMs: int = Field(default=0, ge=0)
@@ -149,6 +152,8 @@ class AddCloudModelRequest(BaseModel):
     baseUrl: str | None = None
     apiKeyEnv: str | None = None
     apiKey: str | None = None
+    apiFormat: Literal["openai-chat-completions", "anthropic-messages", "custom-openai-path"] | None = None
+    endpointPath: str | None = None
     description: str = ""
 
 
@@ -159,6 +164,8 @@ class CloudModelTestRequest(BaseModel):
     baseUrl: str | None = None
     apiKeyEnv: str | None = None
     apiKey: str | None = None
+    apiFormat: Literal["openai-chat-completions", "anthropic-messages", "custom-openai-path"] | None = None
+    endpointPath: str | None = None
 
 
 class CloudModelTestResponse(BaseModel):

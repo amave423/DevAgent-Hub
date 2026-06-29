@@ -6,6 +6,7 @@ export type AppLanguage = "ru" | "en";
 export type AppTheme = "dark" | "light";
 export type AgentRunMode = "plan" | "coding";
 export type ActionPolicy = "confirm" | "auto-confirm" | "full-access";
+export type CloudApiFormat = "openai-chat-completions" | "anthropic-messages" | "custom-openai-path";
 export type WorkbenchTab =
   | "chat"
   | "agents"
@@ -35,6 +36,8 @@ export interface AgentModel {
   modelName?: string | null;
   baseUrl?: string | null;
   apiKeyEnv?: string | null;
+  apiFormat?: CloudApiFormat | null;
+  endpointPath?: string | null;
   description: string;
   requirements: ModelRequirements;
 }
@@ -51,6 +54,7 @@ export interface LLMCallResult {
   requestedModel: string;
   resolvedModel?: string | null;
   baseUrl?: string | null;
+  requestUrl?: string | null;
   usage?: LLMUsage | null;
   finishReason?: string | null;
   latencyMs: number;
@@ -130,6 +134,8 @@ export interface AddCloudModelRequest {
   baseUrl?: string | null;
   apiKeyEnv?: string | null;
   apiKey?: string | null;
+  apiFormat?: CloudApiFormat | null;
+  endpointPath?: string | null;
   description?: string;
 }
 
@@ -140,6 +146,8 @@ export interface CloudModelTestRequest {
   baseUrl?: string | null;
   apiKeyEnv?: string | null;
   apiKey?: string | null;
+  apiFormat?: CloudApiFormat | null;
+  endpointPath?: string | null;
 }
 
 export interface CloudModelTestResponse {

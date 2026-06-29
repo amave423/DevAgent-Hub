@@ -34,6 +34,7 @@ import { GithubPanel } from "./panels/GithubPanel";
 import { LogsPanel } from "./panels/LogsPanel";
 import { SettingsPanel } from "./panels/SettingsPanel";
 import { t as translate } from "./i18n";
+import { pageInfo } from "./i18n/pageInfo";
 import type { WorkbenchTab } from "./types";
 import type { CopyKey } from "./i18n/ru";
 import { normalizeAgentOrder } from "./utils";
@@ -211,6 +212,8 @@ export function App() {
                 config={config}
                 settings={settings}
                 patchRuntime={patchRuntime}
+                onOpenSettings={() => setActiveTab("settings")}
+                info={pageInfo(language, "chat")}
               />
             )}
             {activeTab === "agents" && (
@@ -221,6 +224,7 @@ export function App() {
                   patchConfig((current) => normalizeAgentOrder({ ...current, agents }))
                 }
                 t={t}
+                info={pageInfo(language, "agents")}
               />
             )}
             {activeTab === "code" && (
@@ -230,11 +234,12 @@ export function App() {
                 isStarting={isStartingEditor}
                 onInstall={handleInstallOpenVSCode}
                 t={t}
+                info={pageInfo(language, "code")}
               />
             )}
-            {activeTab === "terminal" && <TerminalPanel t={t} />}
+            {activeTab === "terminal" && <TerminalPanel t={t} info={pageInfo(language, "terminal")} />}
             {activeTab === "preview" && (
-              <PreviewPanel settings={settings} patchSettings={patchSettings} t={t} />
+              <PreviewPanel settings={settings} patchSettings={patchSettings} t={t} info={pageInfo(language, "preview")} />
             )}
             {activeTab === "github" && (
               <GithubPanel
@@ -248,9 +253,10 @@ export function App() {
                   void refreshWorkspace();
                 }}
                 t={t}
+                info={pageInfo(language, "github")}
               />
             )}
-            {activeTab === "logs" && <LogsPanel logs={logs} taskState={taskState} t={t} />}
+            {activeTab === "logs" && <LogsPanel logs={logs} taskState={taskState} t={t} info={pageInfo(language, "logs")} />}
             {activeTab === "settings" && (
               <SettingsPanel
                 config={config}
@@ -259,6 +265,7 @@ export function App() {
                 patchSettings={patchSettings}
                 patchConfig={patchConfig}
                 t={t}
+                info={pageInfo(language, "settings")}
               />
             )}
           </section>

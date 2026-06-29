@@ -14,6 +14,7 @@ import { PanelHeader } from "../components/PanelHeader";
 import { Metric } from "../components/Metric";
 import { IntegrationCards } from "../components/IntegrationCard";
 import type { CopyKey } from "../i18n/ru";
+import type { PageInfoContent } from "../i18n/pageInfo";
 
 export function GithubPanel({
   settings,
@@ -23,6 +24,7 @@ export function GithubPanel({
   onRefresh,
   onAction,
   t,
+  info,
 }: {
   settings: DevHubSettings;
   patchSettings: (patch: Partial<DevHubSettings>) => void;
@@ -31,6 +33,7 @@ export function GithubPanel({
   onRefresh: () => void;
   onAction: (response: WorkspaceActionResponse) => void;
   t: (key: CopyKey) => string;
+  info: PageInfoContent;
 }) {
   const [repoName, setRepoName] = useState(workspaceStatus?.github.repository ?? "devagent-hub");
   const [commitMessage, setCommitMessage] = useState("Update DevAgent Hub workspace");
@@ -82,6 +85,8 @@ export function GithubPanel({
       <PanelHeader
         title={t("githubTitle")}
         subtitle={workspaceStatus?.github.message || t("githubHint")}
+        info={info}
+        infoLabel={t("info")}
         action={
           <button className="secondary-button" onClick={onRefresh}>
             <RefreshCw size={16} />
@@ -126,10 +131,12 @@ export function GithubPanel({
         <label className="field">
           <span>{t("owner")}</span>
           <input value={settings.githubOwner} onChange={(event) => patchSettings({ githubOwner: event.target.value })} placeholder="amave423" />
+          <small>{t("ownerHelp")}</small>
         </label>
         <label className="field">
           <span>{t("repoName")}</span>
           <input value={repoName} onChange={(event) => setRepoName(event.target.value)} placeholder="devagent-hub" />
+          <small>{t("repoNameHelp")}</small>
         </label>
         <label className="field">
           <span>{t("defaultVisibility")}</span>
@@ -140,10 +147,12 @@ export function GithubPanel({
             <option value="private">{t("private")}</option>
             <option value="public">{t("public")}</option>
           </select>
+          <small>{t("visibilityHelp")}</small>
         </label>
         <label className="field">
           <span>{t("commitMessage")}</span>
           <input value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} />
+          <small>{t("commitMessageHelp")}</small>
         </label>
       </div>
       <div className="github-status-grid">
@@ -226,8 +235,8 @@ export function GithubPanel({
         </article>
       </div>
 
-      {/* PR form */}
-      <div className="pr-form">
+      <details className="pr-form">
+        <summary>{t("pullRequest")}</summary>
         <div className="settings-grid">
           <label className="field">
             <span>{t("prTitle")}</span>
@@ -265,7 +274,7 @@ export function GithubPanel({
         >
           {t("createPR")}
         </button>
-      </div>
+      </details>
 
       <IntegrationCards statuses={statuses.filter((status) => status.id === "github")} t={t} />
     </div>

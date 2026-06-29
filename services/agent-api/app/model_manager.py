@@ -174,6 +174,13 @@ CLOUD_PROVIDER_PRESETS = [
         description="Official OpenAI-compatible API.",
     ),
     CloudProviderPreset(
+        id="anthropic",
+        name="Anthropic",
+        baseUrl="https://api.anthropic.com/v1",
+        apiKeyEnv="AGENT_STUDIO_ANTHROPIC_API_KEY",
+        description="Anthropic Messages API and compatible proxy endpoints.",
+    ),
+    CloudProviderPreset(
         id="custom",
         name="Custom OpenAI-compatible",
         baseUrl="",
@@ -293,6 +300,8 @@ class ModelManager:
         model_id = slugify(request.id or f"{provider}-{request.name}")
         api_key_env = (request.apiKeyEnv or default_api_key_env(provider)).strip()
         base_url = (request.baseUrl or "").strip() or None
+        api_format = request.apiFormat or default_api_format(provider)
+        endpoint_path = (request.endpointPath or "").strip() or None
 
         if request.apiKey and api_key_env:
             os.environ[api_key_env] = request.apiKey.strip()
@@ -305,6 +314,8 @@ class ModelManager:
             modelName=(request.modelName or request.name).strip(),
             baseUrl=base_url,
             apiKeyEnv=api_key_env,
+            apiFormat=api_format,
+            endpointPath=endpoint_path,
             description=request.description or f"Custom cloud model via {provider}.",
             requirements=ModelRequirements(ramGb=1, diskGb=0),
         )
@@ -315,7 +326,13 @@ class ModelManager:
         api_key_env = (request.apiKeyEnv or default_api_key_env(provider)).strip()
         api_key = (request.apiKey or "").strip() or (os.getenv(api_key_env) if api_key_env else "") or ""
         base_url = (request.baseUrl or "").strip() or provider_base_url(provider) or None
-        client = OpenAIProvider(api_key=api_key, base_url=base_url, provider_id=provider)
+        client = OpenAIProvider(
+            api_key=api_key,
+            base_url=base_url,
+            provider_id=provider,
+            api_format=request.apiFormat or default_api_format(provider),
+            endpoint_path=(request.endpointPath or "").strip() or None,
+        )
         result = await client.chat(
             model=(request.modelName or request.name).strip(),
             messages=[
@@ -796,6 +813,8 @@ def default_api_key_env(provider: str) -> str:
         return "AGENT_STUDIO_OPENAI_API_KEY"
     if provider == "openrouter":
         return "AGENT_STUDIO_OPENROUTER_API_KEY"
+    if provider == "anthropic":
+        return "AGENT_STUDIO_ANTHROPIC_API_KEY"
     return "AGENT_STUDIO_API_KEY"
 
 
@@ -804,7 +823,15 @@ def provider_base_url(provider: str) -> str:
         return "https://api.openai.com/v1"
     if provider == "openrouter":
         return "https://openrouter.ai/api/v1"
+    if provider == "anthropic":
+        return "https://api.anthropic.com/v1"
     return ""
+
+
+def default_api_format(provider: str) -> str:
+    if provider == "anthropic":
+        return "anthropic-messages"
+    return "openai-chat-completions"
 
 
 def cleanup_empty_parents(start: Path, stop: Path) -> None:

@@ -3,6 +3,7 @@ import type { WorkspaceStatus } from "../types";
 import { PanelHeader } from "../components/PanelHeader";
 import { EmptyToolState } from "../components/EmptyToolState";
 import type { CopyKey } from "../i18n/ru";
+import type { PageInfoContent } from "../i18n/pageInfo";
 
 export function CodePanel({
   effectiveUrl,
@@ -10,12 +11,14 @@ export function CodePanel({
   isStarting,
   onInstall,
   t,
+  info,
 }: {
   effectiveUrl: string;
   workspaceStatus: WorkspaceStatus | null;
   isStarting: boolean;
   onInstall: () => void;
   t: (key: CopyKey) => string;
+  info: PageInfoContent;
 }) {
   const isInstalled = workspaceStatus?.openVsCode.configured ?? false;
 
@@ -24,6 +27,8 @@ export function CodePanel({
       <PanelHeader
         title={t("codeTitle")}
         subtitle={workspaceStatus?.openVsCode.message || t("codeSubtitle")}
+        info={info}
+        infoLabel={t("info")}
         action={
           !isInstalled ? (
             <button className="secondary-button" onClick={onInstall} disabled={isStarting}>

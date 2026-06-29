@@ -16,3 +16,10 @@ export function webSearch(query: string, limit = 5): Promise<WebSearchResponse> 
     body: JSON.stringify({ query, limit }),
   });
 }
+
+export function testWebSearch(query = "DevAgent Hub", limit = 3): Promise<WebSearchResponse> {
+  return request<WebSearchResponse>("/api/tools/web-search/test", {
+    method: "POST",
+    body: JSON.stringify({ query, limit }),
+  });
+}

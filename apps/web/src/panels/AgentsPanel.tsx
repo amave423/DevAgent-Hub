@@ -1,17 +1,21 @@
 import { ArrowDown, ArrowUp, BrainCircuit, Eraser } from "lucide-react";
 import type { AgentDefinition, AgentsConfig } from "../types";
 import type { CopyKey } from "../i18n/ru";
+import { PanelHeader } from "../components/PanelHeader";
+import type { PageInfoContent } from "../i18n/pageInfo";
 
 export function AgentsPanel({
   config,
   activeAgentId,
   onChange,
   t,
+  info,
 }: {
   config: AgentsConfig;
   activeAgentId?: string | null;
   onChange: (agents: AgentDefinition[]) => void;
   t: (key: CopyKey) => string;
+  info: PageInfoContent;
 }) {
   const agents = config.agents.slice().sort((left, right) => left.order - right.order);
 
@@ -45,16 +49,18 @@ export function AgentsPanel({
 
   return (
     <div className="tab-panel">
-      <div className="section-heading">
-        <div>
-          <h2>{t("agentsTitle")}</h2>
-          <span>{t("agentsSubtitle")}</span>
-        </div>
-        <button className="secondary-button" onClick={addAgent}>
-          <BrainCircuit size={16} />
-          {t("addAgent")}
-        </button>
-      </div>
+      <PanelHeader
+        title={t("agentsTitle")}
+        subtitle={t("agentsSubtitle")}
+        info={info}
+        infoLabel={t("info")}
+        action={
+          <button className="secondary-button" onClick={addAgent}>
+            <BrainCircuit size={16} />
+            {t("addAgent")}
+          </button>
+        }
+      />
       <div className="agent-grid">
         {agents.map((agent, index) => {
           const model = config.models.find((item) => item.id === agent.modelId);

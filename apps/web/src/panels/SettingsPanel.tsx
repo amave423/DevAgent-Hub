@@ -13,12 +13,14 @@ import {
   testCloudModel,
 } from "../api/models";
 import { saveRuntimeSettings } from "../api/runtime";
+import { testWebSearch } from "../api/tools";
 import type {
   ActionPolicy,
   AddCloudModelRequest,
   AgentModel,
   AgentRunMode,
   AgentsConfig,
+  CloudApiFormat,
   DevHubSettings,
   IntegrationStatus,
   LocalModelSource,
@@ -29,6 +31,7 @@ import type {
 import { PanelHeader } from "../components/PanelHeader";
 import { IntegrationCards } from "../components/IntegrationCard";
 import type { CopyKey } from "../i18n/ru";
+import type { PageInfoContent } from "../i18n/pageInfo";
 
 export function SettingsPanel({
   config,
@@ -37,6 +40,7 @@ export function SettingsPanel({
   patchSettings,
   patchConfig,
   t,
+  info,
 }: {
   config: AgentsConfig;
   settings: DevHubSettings;
@@ -44,6 +48,7 @@ export function SettingsPanel({
   patchSettings: (patch: Partial<DevHubSettings>) => void;
   patchConfig: (updater: (current: AgentsConfig) => AgentsConfig) => void;
   t: (key: CopyKey) => string;
+  info: PageInfoContent;
 }) {
   const [catalog, setCatalog] = useState<ModelCatalogResponse | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -59,8 +64,10 @@ export function SettingsPanel({
   const [downloads, setDownloads] = useState<ModelDownloadState[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isTestingCloudModel, setIsTestingCloudModel] = useState(false);
+  const [isTestingSearch, setIsTestingSearch] = useState(false);
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
   const [cloudTestNotice, setCloudTestNotice] = useState<string | null>(null);
+  const [webSearchNotice, setWebSearchNotice] = useState<string | null>(null);
   const [cloudForm, setCloudForm] = useState<AddCloudModelRequest>({
     id: "",
     name: "",
@@ -69,6 +76,8 @@ export function SettingsPanel({
     baseUrl: "",
     apiKeyEnv: "AGENT_STUDIO_API_KEY",
     apiKey: "",
+    apiFormat: "openai-chat-completions",
+    endpointPath: "",
     description: "",
   });
 
@@ -259,6 +268,8 @@ export function SettingsPanel({
       provider,
       baseUrl: preset?.baseUrl ?? current.baseUrl ?? "",
       apiKeyEnv: preset?.apiKeyEnv ?? current.apiKeyEnv ?? "AGENT_STUDIO_API_KEY",
+      apiFormat: provider === "anthropic" ? "anthropic-messages" : current.apiFormat ?? "openai-chat-completions",
+      endpointPath: provider === "anthropic" ? "/messages" : current.endpointPath ?? "",
     }));
   }
 
@@ -275,6 +286,8 @@ export function SettingsPanel({
         baseUrl: cloudForm.baseUrl?.trim() || undefined,
         apiKeyEnv: cloudForm.apiKeyEnv?.trim() || undefined,
         apiKey: cloudForm.apiKey?.trim() || undefined,
+        apiFormat: cloudForm.apiFormat || "openai-chat-completions",
+        endpointPath: cloudForm.endpointPath?.trim() || undefined,
         description: cloudForm.description?.trim() || "",
       });
       patchConfig(() => saved);
@@ -297,11 +310,14 @@ export function SettingsPanel({
         baseUrl: cloudForm.baseUrl?.trim() || undefined,
         apiKeyEnv: cloudForm.apiKeyEnv?.trim() || undefined,
         apiKey: cloudForm.apiKey?.trim() || undefined,
+        apiFormat: cloudForm.apiFormat || "openai-chat-completions",
+        endpointPath: cloudForm.endpointPath?.trim() || undefined,
       });
       const resolved = result.result?.resolvedModel || result.result?.requestedModel || cloudForm.name.trim();
       const tokens = result.result?.usage?.totalTokens;
       const tokenText = tokens == null ? t("tokensNotReturned") : `${tokens} ${t("tokens")}`;
-      setCloudTestNotice(`${result.message}: ${resolved}; ${tokenText}${result.output ? `; ${result.output}` : ""}`);
+      const urlText = result.result?.requestUrl ? `${t("requestUrl")}: ${result.result.requestUrl}; ` : "";
+      setCloudTestNotice(`${result.message}: ${urlText}${resolved}; ${tokenText}; ${result.result?.latencyMs ?? 0} ms${result.output ? `; ${result.output}` : ""}`);
     } catch (caught) {
       setCloudTestNotice(caught instanceof Error ? caught.message : "Cloud model test failed.");
     } finally {
@@ -309,9 +325,23 @@ export function SettingsPanel({
     }
   }
 
+  async function handleTestWebSearch() {
+    setWebSearchNotice(null);
+    setIsTestingSearch(true);
+    try {
+      await saveRuntimeSettings({ webSearchEnabled: true, webSearchBaseUrl: settings.webSearchBaseUrl.trim() });
+      const result = await testWebSearch("DevAgent Hub", 3);
+      setWebSearchNotice(`${t("webSearchTestOk")}: ${result.results.length}`);
+    } catch (caught) {
+      setWebSearchNotice(caught instanceof Error ? caught.message : "Search test failed.");
+    } finally {
+      setIsTestingSearch(false);
+    }
+  }
+
   return (
     <div className="tab-panel settings-panel">
-      <PanelHeader title={t("settingsTitle")} subtitle={t("settingsSubtitle")} />
+      <PanelHeader title={t("settingsTitle")} subtitle={t("settingsSubtitle")} info={info} infoLabel={t("info")} />
       <div className="settings-sections">
         {settingsNotice && <div className="notice-strip inline">{settingsNotice}</div>}
         {catalogError && <div className="error-strip inline">{catalogError}</div>}
@@ -469,6 +499,19 @@ export function SettingsPanel({
               <input value={cloudForm.baseUrl ?? ""} onChange={(event) => updateCloudForm({ baseUrl: event.target.value })} placeholder="https://api.example.com/v1" />
             </label>
             <label className="field">
+              <span>{t("apiFormat")}</span>
+              <select value={cloudForm.apiFormat ?? "openai-chat-completions"} onChange={(event) => updateCloudForm({ apiFormat: event.target.value as CloudApiFormat })}>
+                <option value="openai-chat-completions">{t("apiFormatOpenAI")}</option>
+                <option value="anthropic-messages">{t("apiFormatAnthropic")}</option>
+                <option value="custom-openai-path">{t("apiFormatCustomPath")}</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>{t("endpointPath")}</span>
+              <input value={cloudForm.endpointPath ?? ""} onChange={(event) => updateCloudForm({ endpointPath: event.target.value })} placeholder={cloudForm.apiFormat === "anthropic-messages" ? "/messages" : "/chat/completions"} />
+              <small>{t("endpointPathHelp")}</small>
+            </label>
+            <label className="field">
               <span>{t("apiKeyEnv")}</span>
               <input value={cloudForm.apiKeyEnv ?? ""} onChange={(event) => updateCloudForm({ apiKeyEnv: event.target.value })} placeholder="AGENT_STUDIO_API_KEY" />
             </label>
@@ -536,6 +579,8 @@ export function SettingsPanel({
 
         <section>
           <h3>{t("webSearchSettings")}</h3>
+          <p className="settings-note">{t("searxngHelp")}</p>
+          {webSearchNotice && <div className="notice-strip inline">{webSearchNotice}</div>}
           <div className="settings-grid">
             <label className="field">
               <span>{t("webSearch")}</span>
@@ -555,6 +600,12 @@ export function SettingsPanel({
                 placeholder="https://search.example.com"
               />
             </label>
+          </div>
+          <div className="inline-actions left">
+            <button className="secondary-button" onClick={() => void handleTestWebSearch()} disabled={!settings.webSearchBaseUrl.trim() || isTestingSearch}>
+              {isTestingSearch ? <Loader2 className="spin" size={16} /> : <TestTube2 size={16} />}
+              {isTestingSearch ? t("testingWebSearch") : t("testWebSearch")}
+            </button>
           </div>
         </section>
 

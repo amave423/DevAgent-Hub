@@ -131,6 +131,15 @@ async def get_chat(chat_id: str) -> ChatSession:
         raise HTTPException(status_code=404, detail="Chat not found") from exc
 
 
+@app.delete("/api/chats/{chat_id}")
+async def delete_chat(chat_id: str) -> dict[str, bool]:
+    try:
+        chat_store.delete(chat_id)
+        return {"ok": True}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Chat not found") from exc
+
+
 @app.post("/api/chats/{chat_id}/messages", response_model=ChatMessage)
 async def add_chat_message(chat_id: str, request: ChatMessageRequest) -> ChatMessage:
     try:
@@ -397,6 +406,19 @@ async def test_cloud_model(request: CloudModelTestRequest) -> CloudModelTestResp
 
 @app.post("/api/tools/web-search", response_model=WebSearchResponse)
 async def web_search(request: WebSearchRequest) -> WebSearchResponse:
+    try:
+        settings = runtime_settings_store.load()
+        return await web_search_service.search(
+            request.query,
+            limit=request.limit,
+            base_url=settings.webSearchBaseUrl,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/tools/web-search/test", response_model=WebSearchResponse)
+async def test_web_search(request: WebSearchRequest) -> WebSearchResponse:
     try:
         settings = runtime_settings_store.load()
         return await web_search_service.search(
