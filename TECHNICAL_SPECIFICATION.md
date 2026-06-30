@@ -975,7 +975,7 @@ Priority 0: do not break current MVP.
 
 Priority 1:
 
-- repair chat UI;
+- [x] repair chat UI;
 - [x] repair light theme;
 - [x] fix official and reseller API calls;
 - [x] show real model/provider/token metadata;

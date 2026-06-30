@@ -4,7 +4,7 @@ export type TaskStatus = "queued" | "running" | "completed" | "failed" | "cancel
 export type LogLevel = "info" | "debug" | "warning" | "error" | "success";
 export type AppLanguage = "ru" | "en";
 export type AppTheme = "dark" | "light";
-export type AgentRunMode = "plan" | "coding";
+export type AgentRunMode = "plan" | "coding" | "goal" | "full-access";
 export type ActionPolicy = "confirm" | "auto-confirm" | "full-access";
 export type CloudApiFormat = "openai-chat-completions" | "anthropic-messages" | "custom-openai-path";
 export type WorkbenchTab =
@@ -167,12 +167,15 @@ export interface AgentDefinition {
   systemPrompt: string;
 }
 
+export type ReasoningLevel = "none" | "low" | "medium" | "high";
+
 export interface RuntimeConfig {
   maxParallelTasks: number;
   logRetention: number;
   runnerMode: "auto" | "live" | "mock";
   agentMode: AgentRunMode;
   actionPolicy: ActionPolicy;
+  reasoningLevel: ReasoningLevel;
   requestTimeoutSeconds: number;
   maxOutputChars: number;
 }
@@ -321,7 +324,7 @@ export interface ChatAttachment {
 
 export interface ChatMessage {
   id: string;
-  role: "user" | "assistant" | "agent" | "tool" | "system";
+  role: "user" | "assistant" | "agent" | "tool" | "system" | "browser" | "terminal" | "github";
   content: string;
   createdAt: string;
   taskId?: string | null;

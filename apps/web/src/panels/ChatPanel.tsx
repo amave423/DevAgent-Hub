@@ -4,10 +4,16 @@ import {
   ChevronDown,
   Code2,
   Compass,
+  Copy,
+  Download,
+  History,
   Loader2,
   Paperclip,
+  Pencil,
   Plus,
+  RotateCcw,
   Send,
+  Sparkles,
   StopCircle,
   Trash2,
 } from "lucide-react";
@@ -25,6 +31,7 @@ import type {
   ChatSession,
   ChatSummary,
   LLMCallResult,
+  ReasoningLevel,
   TaskState,
 } from "../types";
 import type { CopyKey } from "../i18n/ru";
@@ -81,6 +88,8 @@ export function ChatPanel({
     () => config.agents.filter((agent) => agent.enabled).sort((left, right) => left.order - right.order),
     [config.agents],
   );
+  const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -187,6 +196,96 @@ export function ChatPanel({
     }
   }
 
+  function handleRenameChat(chatId: string, currentTitle: string) {
+    setRenamingChatId(chatId);
+    setRenameValue(currentTitle);
+  }
+
+  function handleCancelRename() {
+    setRenamingChatId(null);
+    setRenameValue("");
+  }
+
+  async function handleConfirmRename(chatId: string) {
+    const next = renameValue.trim();
+    if (!next || next === chatSummaries.find((c) => c.id === chatId)?.title) {
+      handleCancelRename();
+      return;
+    }
+    try {
+      const chat = await getChat(chatId);
+      const updated = { ...chat, title: next };
+      const stored = window.localStorage.getItem("devagent-hub.chats");
+      if (stored) {
+        const all = JSON.parse(stored) as ChatSession[];
+        const idx = all.findIndex((c) => c.id === chatId);
+        if (idx >= 0) {
+          all[idx] = updated;
+          window.localStorage.setItem("devagent-hub.chats", JSON.stringify(all));
+        }
+      }
+      await refreshChatList();
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : "Could not rename chat.");
+    } finally {
+      handleCancelRename();
+    }
+  }
+
+  function handleCopyChat() {
+    if (!activeChat) return;
+    const text = activeChat.messages
+      .map((m) => `[${m.role}] ${m.content}`)
+      .join("\n\n");
+    if (navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(text);
+      setNotice("Chat copied to clipboard.");
+    }
+  }
+
+  function handleExportChat() {
+    if (!activeChat) return;
+    const text = `# ${activeChat.title}\n\n${activeChat.messages
+      .map((m) => `## ${m.role}\n${m.content}`)
+      .join("\n\n")}`;
+    const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${activeChat.title || "chat"}.md`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  function handleRetryLast() {
+    if (!activeChat || isRunning) return;
+    const lastUser = [...activeChat.messages].reverse().find((m) => m.role === "user");
+    if (!lastUser) return;
+    setTaskText(lastUser.content);
+  }
+
+  function handleRegenerate() {
+    if (!activeChat || isRunning) return;
+    const lastUser = [...activeChat.messages].reverse().find((m) => m.role === "user");
+    if (!lastUser) return;
+    void onRun(lastUser.content, {
+      chatId: activeChat.id,
+      agentIds: enabledAgents.map((agent) => agent.id),
+      browserAccess: browserAccessEnabledForRun,
+    });
+  }
+
+  function handleContinue() {
+    if (!activeChat || isRunning) return;
+    void onRun("Continue from where we left off.", {
+      chatId: activeChat.id,
+      agentIds: enabledAgents.map((agent) => agent.id),
+      browserAccess: browserAccessEnabledForRun,
+    });
+  }
+
   async function handleAttachFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
     let chatId = activeChatId;
@@ -266,13 +365,36 @@ export function ChatPanel({
           {isLoadingChats && <span className="muted-line">{t("loading")}</span>}
           {chatSummaries.map((chat) => (
             <div key={chat.id} className={`chat-history-item ${chat.id === activeChatId ? "active" : ""}`}>
-              <button onClick={() => setActiveChatId(chat.id)} type="button">
-                <strong>{chat.title}</strong>
-                <span>{chat.lastMessage || formatDate(chat.updatedAt, language)}</span>
-              </button>
-              <button className="icon-button danger-icon" type="button" title={t("deleteChat")} onClick={() => void handleDeleteChat(chat.id)}>
-                <Trash2 size={15} />
-              </button>
+              {renamingChatId === chat.id ? (
+                <input
+                  className="rename-input"
+                  value={renameValue}
+                  autoFocus
+                  onChange={(event) => setRenameValue(event.target.value)}
+                  onBlur={() => void handleConfirmRename(chat.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void handleConfirmRename(chat.id);
+                    } else if (event.key === "Escape") {
+                      handleCancelRename();
+                    }
+                  }}
+                />
+              ) : (
+                <button onClick={() => setActiveChatId(chat.id)} type="button">
+                  <strong>{chat.title}</strong>
+                  <span>{chat.lastMessage || formatDate(chat.updatedAt, language)}</span>
+                </button>
+              )}
+              <div className="history-item-actions">
+                <button className="icon-button" type="button" title={t("renameChat")} onClick={() => handleRenameChat(chat.id, chat.title)}>
+                  <Pencil size={14} />
+                </button>
+                <button className="icon-button danger-icon" type="button" title={t("deleteChat")} onClick={() => void handleDeleteChat(chat.id)}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -291,6 +413,13 @@ export function ChatPanel({
             </select>
           </label>
           <span className={`runner-badge ${config.runtime.runnerMode}`}>{config.runtime.runnerMode}</span>
+          <div className="toolbar-spacer" />
+          <button className="icon-button" type="button" title={t("copyChat")} onClick={() => handleCopyChat()} disabled={!activeChat?.messages.length}>
+            <Copy size={15} />
+          </button>
+          <button className="icon-button" type="button" title={t("exportChat")} onClick={() => handleExportChat()} disabled={!activeChat?.messages.length}>
+            <Download size={15} />
+          </button>
         </div>
 
         <section className="chat-message-list">
@@ -357,15 +486,35 @@ export function ChatPanel({
               {isUploading ? <Loader2 className="spin" size={18} /> : <Paperclip size={18} />}
             </button>
             <div className="segmented composer-modes" aria-label={t("agentMode")}>
-              <button className={config.runtime.agentMode === "plan" ? "active" : ""} type="button" onClick={() => setMode("plan")}>
+              <button className={config.runtime.agentMode === "plan" ? "active" : ""} type="button" onClick={() => setMode("plan")} title={t("planMode")}>
                 <Bot size={15} />
-                {t("planMode")}
+                <span>{t("planMode")}</span>
               </button>
-              <button className={config.runtime.agentMode === "coding" ? "active" : ""} type="button" onClick={() => setMode("coding")}>
+              <button className={config.runtime.agentMode === "coding" ? "active" : ""} type="button" onClick={() => setMode("coding")} title={t("codingMode")}>
                 <Code2 size={15} />
-                {t("codingMode")}
+                <span>{t("codingMode")}</span>
+              </button>
+              <button className={config.runtime.agentMode === "goal" ? "active" : ""} type="button" onClick={() => setMode("goal")} title={t("goalMode")}>
+                <Sparkles size={15} />
+                <span>{t("goalMode")}</span>
+              </button>
+              <button className={config.runtime.agentMode === "full-access" ? "active" : ""} type="button" onClick={() => setMode("full-access")} title={t("fullAccessMode")}>
+                <History size={15} />
+                <span>{t("fullAccessMode")}</span>
               </button>
             </div>
+            <label className="compact-select">
+              <span>{t("reasoningLevel")}</span>
+              <select
+                value={config.runtime.reasoningLevel}
+                onChange={(event) => patchRuntime({ reasoningLevel: event.target.value as ReasoningLevel })}
+              >
+                <option value="none">{t("reasoningNone")}</option>
+                <option value="low">{t("reasoningLow")}</option>
+                <option value="medium">{t("reasoningMedium")}</option>
+                <option value="high">{t("reasoningHigh")}</option>
+              </select>
+            </label>
             <textarea
               ref={textareaRef}
               value={taskText}
@@ -374,6 +523,17 @@ export function ChatPanel({
               placeholder={t("taskPlaceholder")}
               rows={1}
             />
+            <div className="composer-actions-group">
+              <button className="icon-button" type="button" title={t("retryChat")} onClick={() => handleRetryLast()} disabled={isRunning || !activeChat?.messages.length}>
+                <RotateCcw size={16} />
+              </button>
+              <button className="icon-button" type="button" title={t("regenerateChat")} onClick={() => handleRegenerate()} disabled={isRunning || !activeChat?.messages.length}>
+                <Sparkles size={16} />
+              </button>
+              <button className="icon-button" type="button" title={t("continueChat")} onClick={() => handleContinue()} disabled={isRunning}>
+                <History size={16} />
+              </button>
+            </div>
             <button
               className={`icon-button search-run-button ${browserAccessEnabledForRun ? "active" : ""}`}
               type="button"
@@ -410,7 +570,14 @@ function ChatMessageBubble({
   t: (key: CopyKey) => string;
   language: AppLanguage;
 }) {
-  const label = message.role === "user" ? t("user") : message.role === "tool" ? t("tool") : t("assistant");
+  const label =
+    message.role === "user" ? t("user") :
+    message.role === "tool" ? t("tool") :
+    message.role === "agent" ? t("agentRole") :
+    message.role === "browser" ? t("browserRole") :
+    message.role === "terminal" ? t("terminalRole") :
+    message.role === "github" ? t("githubRole") :
+    t("assistant");
   return (
     <article className={`chat-bubble ${message.role}`}>
       <header>

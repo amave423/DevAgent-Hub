@@ -376,6 +376,7 @@ function normalizeConfig(config: AgentsConfig): AgentsConfig {
       runnerMode: config.runtime?.runnerMode ?? "auto",
       agentMode: config.runtime?.agentMode ?? "plan",
       actionPolicy: config.runtime?.actionPolicy ?? "confirm",
+      reasoningLevel: config.runtime?.reasoningLevel ?? "medium",
       requestTimeoutSeconds: config.runtime?.requestTimeoutSeconds ?? 120,
       maxOutputChars: config.runtime?.maxOutputChars ?? 12000,
     },

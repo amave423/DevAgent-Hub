@@ -120,13 +120,18 @@ class TaskRegistry:
 
             run_mode = request.mode or config.runtime.agentMode
             action_policy = request.actionPolicy or config.runtime.actionPolicy
+            reasoning_level = request.reasoningLevel or config.runtime.reasoningLevel
             managed.state.status = TaskStatus.running
             managed.state.mode = run_mode
             managed.state.actionPolicy = action_policy
             await self.append_log(
                 managed,
                 phase="queue",
-                message=f"Task accepted. Mode: {run_mode.value}; action policy: {action_policy.value}.",
+                message=(
+                    f"Task accepted. Mode: {run_mode.value}; "
+                    f"action policy: {action_policy.value}; "
+                    f"reasoning: {reasoning_level.value}."
+                ),
                 progress=0,
             )
 

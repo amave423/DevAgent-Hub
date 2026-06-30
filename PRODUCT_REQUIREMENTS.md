@@ -409,7 +409,7 @@ Highest priority issues:
 
 ### Phase 1: Stabilize MVP
 
-- Fix chat layout and composer.
+- [x] Fix chat layout and composer.
 - [x] Fix light theme.
 - [x] Fix official and reseller API request formats.
 - [x] Show actual provider/model/base URL/token usage.

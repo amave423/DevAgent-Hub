@@ -33,12 +33,21 @@ class TaskStatus(str, Enum):
 class AgentRunMode(str, Enum):
     plan = "plan"
     coding = "coding"
+    goal = "goal"
+    full_access = "full-access"
 
 
 class ActionPolicy(str, Enum):
     confirm = "confirm"
     auto_confirm = "auto-confirm"
     full_access = "full-access"
+
+
+class ReasoningLevel(str, Enum):
+    none = "none"
+    low = "low"
+    medium = "medium"
+    high = "high"
 
 
 class ModelRequirements(BaseModel):
@@ -190,6 +199,7 @@ class RuntimeConfig(BaseModel):
     runnerMode: Literal["auto", "live", "mock"] = "auto"
     agentMode: AgentRunMode = AgentRunMode.plan
     actionPolicy: ActionPolicy = ActionPolicy.confirm
+    reasoningLevel: ReasoningLevel = ReasoningLevel.medium
     requestTimeoutSeconds: int = Field(default=120, ge=5, le=600)
     maxOutputChars: int = Field(default=12000, ge=1000, le=100000)
 
@@ -207,6 +217,7 @@ class RunAgentsRequest(BaseModel):
     modelOverrides: dict[str, str] = Field(default_factory=dict)
     mode: AgentRunMode | None = None
     actionPolicy: ActionPolicy | None = None
+    reasoningLevel: ReasoningLevel | None = None
     chatId: str | None = None
     attachmentIds: list[str] = Field(default_factory=list)
     webSearch: bool = False
