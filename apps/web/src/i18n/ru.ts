@@ -170,6 +170,7 @@ export const ru = {
   modelMismatch: "запрошено",
   tokensNotReturned: "токены не возвращены провайдером",
   tokens: "токенов",
+  finishReason: "причина завершения",
   githubToken: "GitHub token",
   saveToken: "Сохранить токен",
   testToken: "Проверить токен",

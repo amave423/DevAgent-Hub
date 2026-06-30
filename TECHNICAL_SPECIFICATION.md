@@ -976,9 +976,9 @@ Priority 0: do not break current MVP.
 Priority 1:
 
 - repair chat UI;
-- repair light theme;
+- [x] repair light theme;
 - [x] fix official and reseller API calls;
-- show real model/provider/token metadata;
+- [x] show real model/provider/token metadata;
 - unify internet through Browser;
 - make installer reliable on Ubuntu and Windows.
 

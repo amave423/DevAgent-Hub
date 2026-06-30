@@ -445,7 +445,8 @@ function LLMAudit({ calls, t }: { calls: LLMCallResult[]; t: (key: CopyKey) => s
             <strong>{call.resolvedModel || call.requestedModel}</strong>
             {mismatch && <em>{t("modelMismatch")}: {call.requestedModel}</em>}
             {call.requestUrl && <small>{call.requestUrl}</small>}
-            <small>{tokens == null ? t("tokensNotReturned") : `${tokens} ${t("tokens")}`}</small>
+            <small>{call.rawUsageAvailable ? `${tokens} ${t("tokens")}` : t("tokensNotReturned")}</small>
+            {call.finishReason && <small>{t("finishReason")}: {call.finishReason}</small>}
             <small>{call.latencyMs} ms</small>
           </div>
         );

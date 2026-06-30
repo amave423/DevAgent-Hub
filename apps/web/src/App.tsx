@@ -54,6 +54,20 @@ const tabs: Array<{ id: WorkbenchTab; icon: ReactNode; labelKey: CopyKey }> = [
 ];
 
 const ACTIVE_TAB_KEY = "devagent-hub.active-tab";
+const THEME_KEY = "devagent-hub.theme";
+
+function loadStoredTheme(): "dark" | "light" | null {
+  try {
+    const stored = window.localStorage.getItem(THEME_KEY);
+    return stored === "dark" || stored === "light" ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+function applyTheme(theme: "dark" | "light") {
+  document.documentElement.dataset.theme = theme;
+}
 
 export function App() {
   const [activeTab, setActiveTab] = useState<WorkbenchTab>(() => loadActiveTab());
@@ -104,6 +118,21 @@ export function App() {
   useEffect(() => {
     window.localStorage.setItem(ACTIVE_TAB_KEY, activeTab);
   }, [activeTab]);
+
+  useEffect(() => {
+    const initial = loadStoredTheme();
+    if (initial) {
+      applyTheme(initial);
+    } else if (settings?.theme) {
+      applyTheme(settings.theme);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!settings?.theme) return;
+    applyTheme(settings.theme);
+    window.localStorage.setItem(THEME_KEY, settings.theme);
+  }, [settings?.theme]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {

@@ -172,6 +172,7 @@ export const en: Record<CopyKey, string> = {
   modelMismatch: "requested",
   tokensNotReturned: "tokens not returned by provider",
   tokens: "tokens",
+  finishReason: "finish reason",
   githubToken: "GitHub token",
   saveToken: "Save token",
   testToken: "Test token",

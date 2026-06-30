@@ -410,9 +410,9 @@ Highest priority issues:
 ### Phase 1: Stabilize MVP
 
 - Fix chat layout and composer.
-- Fix light theme.
+- [x] Fix light theme.
 - [x] Fix official and reseller API request formats.
-- Show actual provider/model/base URL/token usage.
+- [x] Show actual provider/model/base URL/token usage.
 - Make Browser the single internet tool.
 - Make OpenVSCode/code-server install reliable on Ubuntu and Windows.
 - Make terminal PTY reliable.
