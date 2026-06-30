@@ -977,7 +977,7 @@ Priority 1:
 
 - repair chat UI;
 - repair light theme;
-- fix official and reseller API calls;
+- [x] fix official and reseller API calls;
 - show real model/provider/token metadata;
 - unify internet through Browser;
 - make installer reliable on Ubuntu and Windows.

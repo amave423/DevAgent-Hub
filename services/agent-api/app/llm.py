@@ -347,7 +347,13 @@ def build_request_url(base_url: str | None, endpoint_path: str | None, default_p
         path = f"/{path}"
     parsed = urlparse(base)
     base_path = parsed.path.rstrip("/")
-    if base_path and (path == base_path or path.startswith(f"{base_path}/")):
+    # If the base path already ends with the same endpoint (e.g. base ends with
+    # /chat/completions and path is /chat/completions), collapse to avoid
+    # https://host/v1/chat/completions/chat/completions for reseller APIs.
+    if base_path and (path == base_path or base_path.endswith(path)):
+        origin = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+        return f"{origin}{base_path}"
+    if base_path and path.startswith(f"{base_path}/"):
         origin = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
         return f"{origin}{path}"
     return f"{base}{path}"

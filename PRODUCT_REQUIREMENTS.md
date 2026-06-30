@@ -411,7 +411,7 @@ Highest priority issues:
 
 - Fix chat layout and composer.
 - Fix light theme.
-- Fix official and reseller API request formats.
+- [x] Fix official and reseller API request formats.
 - Show actual provider/model/base URL/token usage.
 - Make Browser the single internet tool.
 - Make OpenVSCode/code-server install reliable on Ubuntu and Windows.

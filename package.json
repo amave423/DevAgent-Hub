@@ -23,7 +23,8 @@
     "smoke:api": "node scripts/run_python_script.js scripts/smoke_devhub_api.py",
     "smoke:installer": "node scripts\\smoke_installer_prepare.js && node scripts\\smoke_installer_runner.js",
     "smoke:installer-runner": "node scripts\\smoke_installer_runner.js",
-    "verify": "npm run check:installer && npm run smoke:installer && npm run typecheck && npm run smoke:api"
+    "test:url-builder": "python scripts/test_url_builder.py",
+    "verify": "npm run check:installer && npm run smoke:installer && npm run typecheck && npm run smoke:api && npm run test:url-builder"
   },
   "engines": {
     "node": ">=22.12"
