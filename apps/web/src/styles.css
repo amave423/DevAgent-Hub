@@ -340,7 +340,16 @@ a {
 .danger-button:disabled,
 .icon-button:disabled {
   cursor: not-allowed;
-  opacity: 0.45;
+  opacity: 0.68;
+}
+
+.primary-button:disabled,
+.primary-button:disabled:hover,
+.danger-button:disabled,
+.danger-button:disabled:hover {
+  color: var(--muted);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
 }
 
 .error-strip {
@@ -1646,20 +1655,52 @@ textarea:focus {
 
 .composer-row {
   display: grid;
-  grid-template-columns: 46px auto minmax(240px, 1fr) 46px auto;
+  grid-template-columns: 46px minmax(280px, 1fr) 46px auto;
+  grid-template-areas:
+    "attach input browser run"
+    ". modes actions reasoning";
   align-items: stretch;
   gap: 8px;
 }
 
 .composer-row textarea {
+  grid-area: input;
+  width: 100%;
   min-height: 46px;
   max-height: 180px;
   resize: none;
+  overflow-y: hidden;
+}
+
+.composer-row textarea:focus {
   overflow-y: auto;
 }
 
+.composer-row > .icon-button:not(.search-run-button) {
+  grid-area: attach;
+}
+
+.composer-row > .compact-select {
+  grid-area: reasoning;
+  min-height: 46px;
+  justify-self: end;
+}
+
+.composer-row > .compact-select select {
+  min-width: 170px;
+}
+
+.composer-actions-group {
+  grid-area: actions;
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .search-run-button {
-  flex: 0 0 auto;
+  grid-area: browser;
 }
 
 .composer-row > .icon-button,
@@ -1676,13 +1717,16 @@ textarea:focus {
 
 .composer-row > .primary-button,
 .composer-row > .danger-button {
+  grid-area: run;
   height: auto;
-  flex: 0 0 auto;
+  min-width: 128px;
 }
 
 .composer-modes {
-  flex: 0 0 auto;
-  min-width: max-content;
+  grid-area: modes;
+  min-width: 0;
+  justify-self: start;
+  flex-wrap: wrap;
 }
 
 .search-run-button.active {
@@ -2053,19 +2097,38 @@ textarea:focus {
   }
 
   .composer-row {
-    grid-template-columns: 46px 1fr 46px;
+    grid-template-columns: 46px minmax(0, 1fr) 46px;
+    grid-template-areas:
+      "attach input browser"
+      "modes modes modes"
+      "reasoning reasoning reasoning"
+      "actions actions actions"
+      "run run run";
   }
 
   .composer-modes {
-    grid-column: 1 / -1;
+    justify-self: stretch;
   }
 
-  .composer-row textarea {
-    grid-column: 2 / 3;
+  .composer-row > .compact-select {
+    justify-self: stretch;
+    align-items: stretch;
+  }
+
+  .composer-row > .compact-select select {
+    width: 100%;
   }
 
   .composer-row > .primary-button,
   .composer-row > .danger-button {
-    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .composer-actions-group {
+    justify-content: stretch;
+  }
+
+  .composer-actions-group .icon-button {
+    flex: 1;
   }
 }
