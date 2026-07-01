@@ -1,8 +1,8 @@
-# Technical Specification: OmniForge Studio
+# Technical Specification: Orqen Studio
 
 ## 1. Purpose
 
-OmniForge Studio, current repository codename DevAgent Hub, is a local-first and self-hosted web workspace for AI agents, code editing, terminal automation, browser automation, GitHub workflows, and model management.
+Orqen Studio, previously codenamed DevAgent Hub, is a local-first and self-hosted web workspace for AI agents, code editing, terminal automation, browser automation, GitHub workflows, and model management.
 
 The system must support:
 

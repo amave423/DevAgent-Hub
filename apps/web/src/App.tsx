@@ -1,14 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
-  Activity,
-  Bot,
   BrainCircuit,
   Code2,
   Github,
   Globe2,
   Languages,
-  LayoutDashboard,
   Loader2,
   MessageSquareText,
   Moon,
@@ -22,9 +19,6 @@ import {
 import { useAgents } from "./hooks/useAgents";
 import { useWorkspace } from "./hooks/useWorkspace";
 import { StatusPill } from "./components/StatusPill";
-import { ProgressBar } from "./components/ProgressBar";
-import { Metric } from "./components/Metric";
-import { IntegrationCards } from "./components/IntegrationCard";
 import { ChatPanel } from "./panels/ChatPanel";
 import { AgentsPanel } from "./panels/AgentsPanel";
 import { CodePanel } from "./panels/CodePanel";
@@ -78,7 +72,7 @@ function applyTheme(theme: "dark" | "light") {
 export function App() {
   const [activeTab, setActiveTab] = useState<WorkbenchTab>(() => loadActiveTab());
   const [taskText, setTaskText] = useState(
-    "Собери план MVP для автономной IDE-панели DevAgent Hub и предложи первые изменения в коде.",
+    "Собери план MVP для Orqen Studio и предложи первые изменения в коде.",
   );
   const autoStartEditorRef = useRef(false);
 
@@ -189,7 +183,7 @@ export function App() {
     <main className="devhub-shell">
       <aside className="sidebar">
         <div className="product-mark">
-          <Bot size={26} />
+          <img className="orqen-mark" src="/orqen-logo.svg" alt="Orqen Studio" />
         </div>
         <nav aria-label="Workspace">
           {tabs.map((tab) => (
@@ -209,9 +203,9 @@ export function App() {
       <section className="main-surface">
         <header className="topbar">
           <div className="brand">
-            <LayoutDashboard size={24} />
+            <img className="brand-mark" src="/orqen-logo.svg" alt="" />
             <div>
-              <h1>DevAgent Hub</h1>
+              <h1>Orqen Studio</h1>
               <span>{t("productSubtitle")}</span>
             </div>
           </div>
@@ -320,45 +314,9 @@ export function App() {
             )}
           </section>
 
-          {activeTab !== "chat" && (
-            <aside className="right-rail">
-              <RunSummary taskState={taskState} logs={logs} enabledAgents={enabledAgents} t={t} />
-              <IntegrationCards statuses={integrationStatuses} t={t} />
-            </aside>
-          )}
         </div>
       </section>
     </main>
-  );
-}
-
-function RunSummary({
-  taskState,
-  logs,
-  enabledAgents,
-  t,
-}: {
-  taskState: { taskId?: string; status?: string; progress?: number } | null;
-  logs: unknown[];
-  enabledAgents: unknown[];
-  t: (key: CopyKey) => string;
-}) {
-  return (
-    <section className="rail-card">
-      <div className="section-heading compact">
-        <div>
-          <h3>{t("runSummary")}</h3>
-          <span>{taskState?.taskId ? taskState.taskId.slice(0, 8) : t("ready")}</span>
-        </div>
-        <Activity size={18} />
-      </div>
-      <ProgressBar value={taskState?.progress ?? 0} />
-      <div className="metrics-grid">
-        <Metric label={t("status")} value={taskState?.status ?? t("ready")} />
-        <Metric label={t("agentsTitle")} value={String(enabledAgents.length)} />
-        <Metric label={t("events")} value={String(logs.length)} />
-      </div>
-    </section>
   );
 }
 

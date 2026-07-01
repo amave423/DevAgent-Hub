@@ -27,6 +27,7 @@ sys.modules["app.llm"] = llm_module
 llm_spec.loader.exec_module(llm_module)  # type: ignore[union-attr]
 
 build_request_url = llm_module.build_request_url
+infer_format_from_url = llm_module.infer_format_from_url
 
 
 CASES = [
@@ -45,8 +46,18 @@ CASES = [
     ("https://api.anthropic.com/v1", "/v1/messages", "/messages", "https://api.anthropic.com/v1/messages"),
     ("https://api.example.com/v1/messages", "/messages", "/messages", "https://api.example.com/v1/messages"),
     ("https://api.openai.com/v1", "", "/chat/completions", "https://api.openai.com/v1/chat/completions"),
+    ("https://api.example.com/v1", None, "/responses", "https://api.example.com/v1/responses"),
+    ("https://api.example.com/v1/responses", None, "/responses", "https://api.example.com/v1/responses"),
+    ("http://195.208.3.238:4500", None, "/v1/messages", "http://195.208.3.238:4500/v1/messages"),
     # endpoint_path given as a full URL wins unchanged.
     ("https://api.openai.com/v1", "https://api.example.com/v1/chat/completions", "/chat/completions", "https://api.example.com/v1/chat/completions"),
+]
+
+FORMAT_CASES = [
+    ("https://api.example.com/v1/chat/completions", None, "openai-chat-completions"),
+    ("https://api.example.com/v1/responses", None, "openai-responses"),
+    ("https://api.example.com/v1/messages", None, "anthropic-messages"),
+    ("https://api.example.com/v1", None, None),
 ]
 
 
@@ -58,6 +69,14 @@ def main() -> int:
         if got != expected:
             failures += 1
         print(f"{status} base={base_url!r} ep={endpoint_path!r} default={default_path!r} -> {got!r}")
+        if got != expected:
+            print(f"      expected: {expected!r}")
+    for base_url, endpoint_path, expected in FORMAT_CASES:
+        got = infer_format_from_url(base_url, endpoint_path)
+        status = "OK  " if got == expected else "FAIL"
+        if got != expected:
+            failures += 1
+        print(f"{status} infer base={base_url!r} ep={endpoint_path!r} -> {got!r}")
         if got != expected:
             print(f"      expected: {expected!r}")
     if failures:

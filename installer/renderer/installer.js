@@ -141,20 +141,20 @@ async function cancelInstall() {
 
 async function startDevHub() {
   installPanelElement.classList.remove("hidden");
-  appendLog("Starting DevAgent Hub...");
+  appendLog("Starting Orqen Studio...");
   setDevHubRunning(true);
 
   try {
     const response = await window.installerApi.startDevHub(formPayload());
     if (!response.ok) {
-      throw new Error(response.error || "Could not start DevAgent Hub.");
+      throw new Error(response.error || "Could not start Orqen Studio.");
     }
 
     activeDevHubRunId = response.runId;
     devHubLinkElement.href = response.url;
     devHubLinkElement.classList.remove("hidden");
   } catch (error) {
-    appendLog(`DevAgent Hub start failed: ${error.message}`, "error");
+    appendLog(`Orqen Studio start failed: ${error.message}`, "error");
     setDevHubRunning(false);
   }
 }
@@ -162,7 +162,7 @@ async function startDevHub() {
 async function stopDevHub() {
   if (!activeDevHubRunId) return;
   stopDevHubButton.disabled = true;
-  appendLog("Stopping DevAgent Hub...");
+  appendLog("Stopping Orqen Studio...");
   await window.installerApi.stopDevHub(activeDevHubRunId);
 }
 
@@ -264,7 +264,7 @@ function handleDevHubEvent(event) {
 
   switch (event.type) {
     case "process-start":
-      installStatusElement.textContent = "DevAgent Hub running";
+      installStatusElement.textContent = "Orqen Studio running";
       appendLog(event.message);
       if (event.url) {
         devHubLinkElement.href = event.url;
@@ -278,13 +278,13 @@ function handleDevHubEvent(event) {
       appendLog(event.message.trimEnd(), "warning");
       break;
     case "process-error":
-      installStatusElement.textContent = "DevAgent Hub error";
+      installStatusElement.textContent = "Orqen Studio error";
       appendLog(event.message, "error");
       setDevHubRunning(false);
       activeDevHubRunId = null;
       break;
     case "process-exit":
-      installStatusElement.textContent = "DevAgent Hub stopped";
+      installStatusElement.textContent = "Orqen Studio stopped";
       appendLog(event.message);
       setDevHubRunning(false);
       activeDevHubRunId = null;

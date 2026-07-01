@@ -119,9 +119,68 @@ class OpenAIProvider:
         **kwargs: Any,
     ) -> LLMCallResult:
         started = time.perf_counter()
-        if self.api_format == "anthropic-messages":
+        api_format = self._resolved_api_format(model)
+        if api_format == "auto":
+            return await self._auto_chat(model, messages, temperature, max_tokens, started)
+        if api_format == "anthropic-messages":
             return await self._anthropic_messages(model, messages, temperature, max_tokens, started)
+        if api_format == "openai-responses":
+            return await self._openai_responses(model, messages, temperature, max_tokens, started)
 
+        return await self._openai_chat_completions(model, messages, temperature, max_tokens, started)
+
+    def _resolved_api_format(self, model: str) -> str:
+        explicit = (self.api_format or "auto").strip() or "auto"
+        if explicit != "custom-openai-path":
+            return explicit
+        return infer_format_from_url(self.base_url, self.endpoint_path) or "openai-chat-completions"
+
+    async def _auto_chat(
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        started: float,
+    ) -> LLMCallResult:
+        inferred = infer_format_from_url(self.base_url, self.endpoint_path)
+        if inferred:
+            attempts = [inferred]
+        else:
+            model_l = model.lower()
+            provider_l = self.provider_id.lower()
+            looks_anthropic = "claude" in model_l or "anthropic" in model_l or provider_l == "anthropic"
+            looks_responses = model_l.startswith(("gpt-5", "o1", "o3", "o4"))
+            if looks_anthropic:
+                attempts = ["anthropic-messages", "openai-chat-completions", "openai-responses"]
+            elif looks_responses:
+                attempts = ["openai-responses", "openai-chat-completions", "anthropic-messages"]
+            else:
+                attempts = ["openai-chat-completions", "openai-responses", "anthropic-messages"]
+
+        errors: list[str] = []
+        for attempt in attempts:
+            try:
+                if attempt == "anthropic-messages":
+                    return await self._anthropic_messages(model, messages, temperature, max_tokens, started, api_format="auto/anthropic-messages")
+                if attempt == "openai-responses":
+                    return await self._openai_responses(model, messages, temperature, max_tokens, started, api_format="auto/openai-responses")
+                return await self._openai_chat_completions(model, messages, temperature, max_tokens, started, api_format="auto/openai-chat-completions")
+            except Exception as exc:
+                errors.append(f"{attempt}: {exc}")
+
+        raise RuntimeError("All auto API format attempts failed. " + " | ".join(errors))
+
+    async def _openai_chat_completions(
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        started: float,
+        api_format: str | None = None,
+    ) -> LLMCallResult:
+        format_name = api_format or self.api_format or "openai-chat-completions"
         request_url = build_request_url(self.base_url, self.endpoint_path, "/chat/completions")
         headers = {"Content-Type": "application/json"}
         if self.api_key:
@@ -137,9 +196,9 @@ class OpenAIProvider:
             },
         )
         if response.status_code >= 400:
-            raise RuntimeError(format_provider_error(response, request_url, self.api_format))
+            raise RuntimeError(format_provider_error(response, request_url, format_name))
 
-        body = parse_json_response(response, request_url, self.api_format)
+        body = parse_json_response(response, request_url, format_name)
         choices = body.get("choices") if isinstance(body, dict) else []
         choice = choices[0] if isinstance(choices, list) and choices else {}
         message = choice.get("message") if isinstance(choice, dict) else {}
@@ -162,6 +221,48 @@ class OpenAIProvider:
             rawUsageAvailable=usage is not None,
         )
 
+    async def _openai_responses(
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        started: float,
+        api_format: str | None = None,
+    ) -> LLMCallResult:
+        format_name = api_format or self.api_format or "openai-responses"
+        request_url = build_request_url(self.base_url, self.endpoint_path, "/responses")
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        response = await self._client.post(
+            request_url,
+            headers=headers,
+            json={
+                "model": model,
+                "input": messages_to_responses_input(messages),
+                "temperature": temperature,
+                "max_output_tokens": max_tokens,
+            },
+        )
+        if response.status_code >= 400:
+            raise RuntimeError(format_provider_error(response, request_url, format_name))
+
+        body = parse_json_response(response, request_url, format_name)
+        usage = usage_from_responses_response(body.get("usage") if isinstance(body, dict) else None)
+        return LLMCallResult(
+            text=extract_response_text(body),
+            provider=self.provider_id,
+            requestedModel=model,
+            resolvedModel=str(body.get("model") or model) if isinstance(body, dict) else model,
+            baseUrl=self.base_url,
+            requestUrl=request_url,
+            usage=usage,
+            finishReason=str(body.get("status") or body.get("finish_reason") or "") if isinstance(body, dict) else None,
+            latencyMs=round((time.perf_counter() - started) * 1000),
+            rawUsageAvailable=usage is not None,
+        )
+
     async def _anthropic_messages(
         self,
         model: str,
@@ -169,8 +270,10 @@ class OpenAIProvider:
         temperature: float,
         max_tokens: int,
         started: float,
+        api_format: str | None = None,
     ) -> LLMCallResult:
-        request_url = build_request_url(self.base_url, self.endpoint_path, "/messages")
+        format_name = api_format or self.api_format or "anthropic-messages"
+        request_url = build_request_url(self.base_url, self.endpoint_path, "/v1/messages")
         system_parts = [message["content"] for message in messages if message.get("role") == "system"]
         chat_messages = [
             {
@@ -186,6 +289,7 @@ class OpenAIProvider:
         }
         if self.api_key:
             headers["x-api-key"] = self.api_key
+            headers["Authorization"] = f"Bearer {self.api_key}"
         payload: dict[str, Any] = {
             "model": model,
             "messages": chat_messages,
@@ -196,9 +300,14 @@ class OpenAIProvider:
             payload["system"] = "\n\n".join(system_parts)
         response = await self._client.post(request_url, headers=headers, json=payload)
         if response.status_code >= 400:
-            raise RuntimeError(format_provider_error(response, request_url, self.api_format))
+            fallback_url = build_request_url(self.base_url, self.endpoint_path, "/messages")
+            if not self.endpoint_path and fallback_url != request_url and response.status_code in {404, 405, 502}:
+                response = await self._client.post(fallback_url, headers=headers, json=payload)
+                request_url = fallback_url
+            if response.status_code >= 400:
+                raise RuntimeError(format_provider_error(response, request_url, format_name))
 
-        body = response.json()
+        body = parse_json_response(response, request_url, format_name)
         content_blocks = body.get("content", []) if isinstance(body, dict) else []
         text_parts = [
             str(block.get("text") or "")
@@ -287,7 +396,7 @@ def get_provider(provider_id: str, model: dict[str, Any] | None = None) -> LLMPr
     api_format = str(model.get("apiFormat") or "") if model else ""
     endpoint_path = str(model.get("endpointPath") or "") if model else ""
     if not api_format:
-        api_format = "anthropic-messages" if provider_id == "anthropic" else "openai-chat-completions"
+        api_format = "auto"
 
     return OpenAIProvider(
         api_key=api_key,
@@ -317,6 +426,25 @@ def usage_from_openai_response(raw_usage: Any) -> LLMUsage | None:
     )
 
 
+def usage_from_responses_response(raw_usage: Any) -> LLMUsage | None:
+    if raw_usage is None:
+        return None
+    prompt = getattr(raw_usage, "input_tokens", None)
+    completion = getattr(raw_usage, "output_tokens", None)
+    total = getattr(raw_usage, "total_tokens", None)
+    if isinstance(raw_usage, dict):
+        prompt = raw_usage.get("input_tokens", raw_usage.get("prompt_tokens", prompt))
+        completion = raw_usage.get("output_tokens", raw_usage.get("completion_tokens", completion))
+        total = raw_usage.get("total_tokens", total)
+    if prompt is None and completion is None and total is None:
+        return None
+    return LLMUsage(
+        promptTokens=int(prompt) if prompt is not None else None,
+        completionTokens=int(completion) if completion is not None else None,
+        totalTokens=int(total) if total is not None else None,
+    )
+
+
 def anthropic_usage(raw_usage: Any) -> LLMUsage | None:
     if not isinstance(raw_usage, dict):
         return None
@@ -329,6 +457,62 @@ def anthropic_usage(raw_usage: Any) -> LLMUsage | None:
         completionTokens=int(completion) if completion is not None else None,
         totalTokens=(int(prompt or 0) + int(completion or 0)),
     )
+
+
+def messages_to_responses_input(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+    result: list[dict[str, str]] = []
+    for message in messages:
+        role = message.get("role") or "user"
+        if role not in {"system", "user", "assistant", "developer"}:
+            role = "user"
+        result.append({"role": role, "content": message.get("content", "")})
+    return result
+
+
+def extract_response_text(body: dict[str, Any]) -> str:
+    output_text = body.get("output_text")
+    if isinstance(output_text, str):
+        return output_text
+
+    parts: list[str] = []
+    output = body.get("output")
+    if isinstance(output, list):
+        for item in output:
+            if not isinstance(item, dict):
+                continue
+            content = item.get("content")
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict):
+                        text = block.get("text")
+                        if isinstance(text, str):
+                            parts.append(text)
+            text = item.get("text")
+            if isinstance(text, str):
+                parts.append(text)
+
+    choices = body.get("choices")
+    if isinstance(choices, list) and choices:
+        choice = choices[0]
+        if isinstance(choice, dict):
+            message = choice.get("message")
+            if isinstance(message, dict) and isinstance(message.get("content"), str):
+                parts.append(message["content"])
+            elif isinstance(choice.get("text"), str):
+                parts.append(choice["text"])
+
+    return "\n".join(part for part in parts if part).strip()
+
+
+def infer_format_from_url(base_url: str | None, endpoint_path: str | None) -> str | None:
+    text = f"{base_url or ''} {endpoint_path or ''}".lower()
+    if "/responses" in text:
+        return "openai-responses"
+    if "/chat/completions" in text:
+        return "openai-chat-completions"
+    if "/messages" in text:
+        return "anthropic-messages"
+    return None
 
 
 def build_request_url(base_url: str | None, endpoint_path: str | None, default_path: str) -> str:

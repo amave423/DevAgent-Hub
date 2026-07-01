@@ -6,7 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const DEFAULT_REPO_URL = "https://github.com/amave423/DevAgent-Hub.git";
+const DEFAULT_REPO_URL = "https://github.com/amave423/Orqen-Studio.git";
 const DEFAULT_MODEL_ID = "ollama-qwen25-coder-7b";
 const DEFAULT_SERVICE_PORT = 3000;
 const CODE_SERVER_VERSION = "4.117.0";
@@ -14,7 +14,7 @@ const CODE_SERVER_VERSION = "4.117.0";
 function getInstallerDefaults(isPackaged = false) {
   return {
     installPath: isPackaged
-      ? path.join(os.homedir(), "DevAgent Hub")
+      ? path.join(os.homedir(), "Orqen Studio")
       : PROJECT_ROOT,
     repoUrl: DEFAULT_REPO_URL,
     platform: process.platform,
@@ -204,7 +204,7 @@ function buildInstallExecutionSteps(rawSettings) {
     ...buildOllamaPullSteps(settings),
     {
       id: "api-smoke",
-      label: "Check DevAgent Hub API",
+      label: "Check Orqen Studio API",
       cwd: settings.installPath,
       command: python,
       args: [path.join(settings.installPath, "scripts", "smoke_devhub_api.py")],
@@ -263,7 +263,7 @@ function buildDevHubLaunchStep(rawSettings, port = DEFAULT_SERVICE_PORT) {
 
   return {
     id: "devhub-start",
-    label: "Start DevAgent Hub",
+    label: "Start Orqen Studio",
     cwd: settings.installPath,
     command: projectPython(settings),
     args: [
@@ -637,7 +637,7 @@ function applyCloudBaseUrl(model, settings) {
 function buildEnvFile(settings, configPath) {
   const env = runtimeEnv(settings);
   const lines = [
-    "# DevAgent Hub local runtime",
+    "# Orqen Studio local runtime",
     `AGENT_CONFIG_PATH=${quoteEnv(configPath)}`,
     `DEVAGENT_WORKSPACE=${quoteEnv(env.DEVAGENT_WORKSPACE)}`,
     `DEVAGENT_WEB_DIST=${quoteEnv(env.DEVAGENT_WEB_DIST)}`,
@@ -821,13 +821,13 @@ function buildWindowsStartScript(settings) {
 function buildWindowsTaskInstallScript() {
   return [
     "$ErrorActionPreference = 'Stop'",
-    "$TaskName = 'DevAgent Hub'",
+    "$TaskName = 'Orqen Studio'",
     "$ScriptPath = Join-Path $PSScriptRoot 'start-devagent-hub.ps1'",
     "$PowerShell = (Get-Command powershell.exe).Source",
     "$Arguments = \"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `\"$ScriptPath`\"\"",
     "function Install-StartupShortcut {",
     "  $StartupDir = [Environment]::GetFolderPath('Startup')",
-    "  $ShortcutPath = Join-Path $StartupDir 'DevAgent Hub.lnk'",
+    "  $ShortcutPath = Join-Path $StartupDir 'Orqen Studio.lnk'",
     "  $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path",
     "  try {",
     "    $Shell = New-Object -ComObject WScript.Shell",
@@ -836,14 +836,14 @@ function buildWindowsTaskInstallScript() {
     "    $Shortcut.Arguments = $Arguments",
     "    $Shortcut.WorkingDirectory = $ProjectRoot",
     "    $Shortcut.WindowStyle = 7",
-    "    $Shortcut.Description = 'Start DevAgent Hub'",
+    "    $Shortcut.Description = 'Start Orqen Studio'",
     "    $Shortcut.Save()",
     "  } catch {",
-    "    $CmdPath = Join-Path $StartupDir 'DevAgent Hub.cmd'",
+    "    $CmdPath = Join-Path $StartupDir 'Orqen Studio.cmd'",
     "    Set-Content -LiteralPath $CmdPath -Encoding ASCII -Value \"@echo off`r`nstart `\"`\" /min powershell.exe $Arguments`r`n\"",
     "  }",
     "  Start-Process -FilePath $PowerShell -ArgumentList $Arguments -WindowStyle Hidden",
-    "  Write-Host 'DevAgent Hub startup shortcut installed and service start requested.'",
+    "  Write-Host 'Orqen Studio startup shortcut installed and service start requested.'",
     "}",
     "try {",
     "  $Action = New-ScheduledTaskAction -Execute $PowerShell -Argument $Arguments",
@@ -852,7 +852,7 @@ function buildWindowsTaskInstallScript() {
     "  $Principal = New-ScheduledTaskPrincipal -UserId $UserId -LogonType Interactive -RunLevel Limited",
     "  Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Force -ErrorAction Stop | Out-Null",
     "  Start-ScheduledTask -TaskName $TaskName -ErrorAction Stop",
-    "  Write-Host 'DevAgent Hub scheduled task installed and service start requested.'",
+    "  Write-Host 'Orqen Studio scheduled task installed and service start requested.'",
     "} catch {",
     "  Write-Warning \"Scheduled Task installation failed: $($_.Exception.Message)\"",
     "  Write-Warning 'Using current-user Startup shortcut fallback instead.'",
@@ -864,15 +864,15 @@ function buildWindowsTaskInstallScript() {
 
 function buildWindowsTaskUninstallScript() {
   return [
-    "$TaskName = 'DevAgent Hub'",
+    "$TaskName = 'Orqen Studio'",
     "if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {",
     "  Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue",
     "  Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false",
     "}",
     "$StartupDir = [Environment]::GetFolderPath('Startup')",
-    "Remove-Item -LiteralPath (Join-Path $StartupDir 'DevAgent Hub.lnk') -ErrorAction SilentlyContinue",
-    "Remove-Item -LiteralPath (Join-Path $StartupDir 'DevAgent Hub.cmd') -ErrorAction SilentlyContinue",
-    "Write-Host 'DevAgent Hub scheduled task/startup shortcut removed.'",
+    "Remove-Item -LiteralPath (Join-Path $StartupDir 'Orqen Studio.lnk') -ErrorAction SilentlyContinue",
+    "Remove-Item -LiteralPath (Join-Path $StartupDir 'Orqen Studio.cmd') -ErrorAction SilentlyContinue",
+    "Write-Host 'Orqen Studio scheduled task/startup shortcut removed.'",
     "",
   ].join("\n");
 }
@@ -883,7 +883,7 @@ function buildSystemdUnit(settings) {
   const apiDir = path.join(projectRoot, "services", "agent-api");
   return [
     "[Unit]",
-    "Description=DevAgent Hub",
+    "Description=Orqen Studio",
     "After=network-online.target",
     "Wants=network-online.target",
     "",
@@ -933,7 +933,7 @@ function buildSystemdUninstallScript() {
     "systemctl --user disable --now devagent-hub.service || true",
     "rm -f \"$HOME/.config/systemd/user/devagent-hub.service\"",
     "systemctl --user daemon-reload",
-    "echo 'DevAgent Hub systemd user service removed.'",
+    "echo 'Orqen Studio systemd user service removed.'",
     "",
   ].join("\n");
 }
@@ -1076,7 +1076,7 @@ function buildReadme(settings, commands) {
     urls.push("LAN access token: stored in services/secrets.env as DEVAGENT_AUTH_TOKEN");
   }
   return [
-    "DevAgent Hub install plan",
+    "Orqen Studio install plan",
     "",
     `Project path: ${settings.installPath}`,
     `Repository: ${settings.repoUrl}`,

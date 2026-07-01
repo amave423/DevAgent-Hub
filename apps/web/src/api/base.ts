@@ -55,7 +55,7 @@ export async function devHubFetch(path: string, init?: RequestInit, retry = true
   });
 
   if (response.status === 401 && retry) {
-    const nextToken = window.prompt("DevAgent Hub access token");
+    const nextToken = window.prompt("Orqen Studio access token");
     if (nextToken) {
       window.localStorage.setItem(AUTH_TOKEN_KEY, nextToken.trim());
       return devHubFetch(path, init, false);

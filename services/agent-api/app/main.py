@@ -66,7 +66,7 @@ from .web_search import WebSearchService
 from .workspace_service import GitHubService, OpenVSCodeManager, WorkspaceService
 
 
-app = FastAPI(title="DevAgent Hub API", version="0.2.0")
+app = FastAPI(title="Orqen Studio API", version="0.2.0")
 config_store = ConfigStore()
 workspace_service = WorkspaceService()
 chat_store = ChatStore(workspace_service.root)
@@ -99,7 +99,7 @@ async def api_auth_guard(request: Request, call_next):
         return await call_next(request)
     return JSONResponse(
         status_code=401,
-        content={"detail": "DevAgent Hub access token is required."},
+        content={"detail": "Orqen Studio access token is required."},
         headers={"WWW-Authenticate": "Bearer"},
     )
 

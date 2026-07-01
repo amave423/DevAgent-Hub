@@ -48,7 +48,7 @@ class BrowserService:
                 user_agent=(
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/123 Safari/537.36 DevAgentHub/1.0"
+                    "Chrome/123 Safari/537.36 OrqenStudio/1.0"
                 ),
             )
             page = await context.new_page()
@@ -98,7 +98,7 @@ class BrowserService:
         self.downloads_root.mkdir(parents=True, exist_ok=True)
         target = unique_path(self.downloads_root / filename)
         async with httpx.AsyncClient(follow_redirects=True, timeout=120.0, trust_env=True) as client:
-            response = await client.get(url, headers={"User-Agent": "DevAgentHub/1.0"})
+            response = await client.get(url, headers={"User-Agent": "OrqenStudio/1.0"})
             response.raise_for_status()
             target.write_bytes(response.content)
             return BrowserDownloadResponse(

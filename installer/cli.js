@@ -36,7 +36,7 @@ async function main() {
 
   await ensureRepository(settings);
 
-  console.log("\nPreparing DevAgent Hub configuration...");
+  console.log("\nPreparing Orqen Studio configuration...");
   const prepared = await prepareInstall(settings);
   await writeSecretsEnv(settings);
   printPreparation(prepared);
@@ -54,7 +54,7 @@ async function main() {
     await installService(settings);
   }
 
-  console.log("\nDevAgent Hub is ready.");
+  console.log("\nOrqen Studio is ready.");
   console.log(shouldStartService
     ? `Web UI: http://127.0.0.1:${settings.servicePort || 3000}`
     : "Manual start: services/start-devagent-hub.ps1 on Windows, or services/install-linux-systemd.sh on Linux.");
@@ -107,7 +107,7 @@ async function collectSettings(args, modelOptions, agentOptions, interactive) {
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {
-    base.installPath = await question(rl, "Install path", base.installPath);
+    base.installPath = await question(rl, "Service install folder", base.installPath);
 
     const selectedModels = await promptModels(rl, modelOptions, base.selectedModelIds);
     base.selectedModelIds = selectedModels.map((model) => model.id);
@@ -295,8 +295,7 @@ async function loadDefaultConfig() {
 }
 
 async function ensureRepository(settings) {
-  const packagePath = path.join(settings.installPath, "package.json");
-  if (fsSync.existsSync(packagePath)) return;
+  if (await isExistingOrqenRepo(settings.installPath)) return;
 
   const parent = path.dirname(settings.installPath);
   await fs.mkdir(parent, { recursive: true });
@@ -304,7 +303,7 @@ async function ensureRepository(settings) {
   if (fsSync.existsSync(settings.installPath)) {
     const entries = await fs.readdir(settings.installPath);
     if (entries.length > 0) {
-      throw new Error(`Install path exists but is not a DevAgent Hub repo: ${settings.installPath}`);
+      throw new Error(`Install path exists but is not empty. Choose an empty folder or an existing Orqen Studio repo: ${settings.installPath}`);
     }
   }
 
@@ -333,6 +332,21 @@ async function writeSecretsEnv(settings) {
 
   if (process.platform !== "win32") {
     await fs.chmod(secretsPath, 0o600);
+  }
+}
+
+async function isExistingOrqenRepo(installPath) {
+  const packagePath = path.join(installPath, "package.json");
+  if (!fsSync.existsSync(packagePath)) return false;
+
+  try {
+    const pkg = JSON.parse(await fs.readFile(packagePath, "utf8"));
+    const knownName = ["orqen-studio", "ai-agent-studio"].includes(String(pkg.name || ""));
+    const apiDir = path.join(installPath, "services", "agent-api");
+    const installerFile = path.join(installPath, "installer", "install-service.js");
+    return knownName && fsSync.existsSync(apiDir) && fsSync.existsSync(installerFile);
+  } catch {
+    return false;
   }
 }
 
@@ -474,14 +488,14 @@ function toCamelCase(value) {
 
 function printHelp() {
   console.log(`
-DevAgent Hub terminal installer
+Orqen Studio terminal installer
 
 Usage:
   node installer/cli.js [options]
 
 Options:
   --yes                         Non-interactive install with defaults.
-  --install-path <path>          Target repo path.
+  --install-path <path>          Target service folder. Empty folders are cloned automatically.
   --repo-url <url>               Git repository URL.
   --models <ids>                 Comma-separated model ids to expose in UI.
   --model <id>                   Default model assigned to all agents.

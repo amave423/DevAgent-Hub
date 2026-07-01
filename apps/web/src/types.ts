@@ -6,7 +6,7 @@ export type AppLanguage = "ru" | "en";
 export type AppTheme = "dark" | "light";
 export type AgentRunMode = "plan" | "coding" | "goal" | "full-access";
 export type ActionPolicy = "confirm" | "auto-confirm" | "full-access";
-export type CloudApiFormat = "openai-chat-completions" | "anthropic-messages" | "custom-openai-path";
+export type CloudApiFormat = "auto" | "openai-chat-completions" | "openai-responses" | "anthropic-messages" | "custom-openai-path";
 export type WorkbenchTab =
   | "chat"
   | "agents"

@@ -110,8 +110,14 @@ a {
   height: 58px;
   display: grid;
   place-items: center;
-  color: var(--accent);
   border-bottom: 1px solid var(--border);
+}
+
+.orqen-mark {
+  width: 34px;
+  height: 34px;
+  display: block;
+  border-radius: 10px;
 }
 
 .sidebar nav {
@@ -215,6 +221,13 @@ a {
 .brand {
   gap: 12px;
   min-width: 0;
+}
+
+.brand-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  flex: 0 0 auto;
 }
 
 .brand h1,
@@ -379,13 +392,12 @@ a {
   flex: 1 1 auto;
   height: 100%;
   min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 330px;
+  display: block;
   overflow: hidden;
 }
 
 .workspace-layout.chat-active {
-  grid-template-columns: minmax(0, 1fr);
+  display: block;
 }
 
 .workbench {
@@ -394,17 +406,6 @@ a {
   min-height: 0;
   overflow: hidden;
   background: var(--bg);
-}
-
-.right-rail {
-  min-height: 0;
-  overflow: auto;
-  padding: 14px;
-  border-left: 1px solid var(--border);
-  background: var(--surface);
-  display: grid;
-  align-content: start;
-  gap: 12px;
 }
 
 .tab-panel {
@@ -824,6 +825,26 @@ textarea:focus {
   line-height: 1.45;
 }
 
+.advanced-settings {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+}
+
+.advanced-settings summary {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.advanced-settings > div {
+  padding: 0 12px 12px;
+}
+
 .model-detail-row {
   min-height: 42px;
   display: grid;
@@ -1063,11 +1084,6 @@ textarea:focus {
 
   .github-status-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .right-rail {
-    border-left: 0;
-    border-top: 1px solid var(--border);
   }
 
   .purpose-row {
@@ -1994,7 +2010,6 @@ textarea:focus {
 
 :root[data-theme="light"] .sidebar,
 :root[data-theme="light"] .topbar,
-:root[data-theme="light"] .right-rail,
 :root[data-theme="light"] .task-composer,
 :root[data-theme="light"] .message,
 :root[data-theme="light"] .rail-card,
@@ -2041,8 +2056,7 @@ textarea:focus {
 }
 
 :root[data-theme="light"] .sidebar,
-:root[data-theme="light"] .topbar,
-:root[data-theme="light"] .right-rail {
+:root[data-theme="light"] .topbar {
   border-color: #d6dde5;
 }
 

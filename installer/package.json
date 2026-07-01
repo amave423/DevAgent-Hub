@@ -1,10 +1,10 @@
 {
-  "name": "@ai-agent-studio/installer",
+  "name": "@orqen-studio/installer",
   "version": "0.1.0",
   "private": true,
   "main": "main.js",
-  "description": "DevAgent Hub GUI installer and launcher.",
-  "author": "DevAgent Hub",
+  "description": "Orqen Studio GUI installer and launcher.",
+  "author": "Orqen Studio",
   "scripts": {
     "dev": "electron .",
     "check": "node --check main.js && node --check preload.js && node --check install-service.js && node --check install-runner.js && node --check secret-store.js && node --check cli.js && node --check renderer/installer.js",

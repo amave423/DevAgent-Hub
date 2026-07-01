@@ -1,6 +1,6 @@
 param(
   [string]$InstallPath = "",
-  [string]$RepoUrl = "https://github.com/amave423/DevAgent-Hub.git",
+  [string]$RepoUrl = "https://github.com/amave423/Orqen-Studio.git",
   [switch]$Yes,
   [switch]$SkipSystemPackages,
   [switch]$SkipOllama,
@@ -105,7 +105,7 @@ if ([string]::IsNullOrWhiteSpace($InstallPath)) {
   if ((Test-Path (Join-Path $PSScriptRoot "package.json")) -and (Test-Path (Join-Path $PSScriptRoot "installer"))) {
     $InstallPath = $PSScriptRoot
   } else {
-    $InstallPath = Join-Path $HOME "DevAgent Hub"
+    $InstallPath = Join-Path $HOME "Orqen Studio"
   }
 }
 
@@ -138,13 +138,13 @@ if (!(Test-Path (Join-Path $InstallPath "package.json"))) {
   if (Test-Path $InstallPath) {
     $entries = Get-ChildItem -Force -LiteralPath $InstallPath
     if ($entries.Count -gt 0) {
-      throw "Install path exists but is not a DevAgent Hub repo: $InstallPath"
+      throw "Install path exists but is not empty. Choose an empty folder or an existing Orqen Studio repo: $InstallPath"
     }
   } else {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $InstallPath) | Out-Null
   }
 
-  Write-Step "Cloning DevAgent Hub"
+  Write-Step "Cloning Orqen Studio"
   git clone --depth 1 $RepoUrl $InstallPath
 }
 
@@ -166,5 +166,5 @@ if ($OpenRouterApiKey) { $argsList += @("--openrouter-api-key", $OpenRouterApiKe
 if ($OpenAIApiKey) { $argsList += @("--openai-api-key", $OpenAIApiKey) }
 if ($CustomApiKey) { $argsList += @("--custom-api-key", $CustomApiKey) }
 
-Write-Step "Starting DevAgent Hub installer"
+Write-Step "Starting Orqen Studio installer"
 node installer/cli.js @argsList

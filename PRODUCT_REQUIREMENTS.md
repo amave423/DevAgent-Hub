@@ -1,26 +1,17 @@
-# Product Requirements: OmniForge Studio
+# Product Requirements: Orqen Studio
 
 ## 1. Product Identity
 
-**Current codename:** DevAgent Hub  
-**Recommended startup name:** OmniForge Studio
+**Product name:** Orqen Studio  
+**Previous codename:** DevAgent Hub
 
-OmniForge Studio is a local-first AI development workspace that lets users work with any AI model, any workspace, and any automation level from one web interface.
+Orqen Studio is a local-first AI development workspace that lets users work with any AI model, any workspace, and any automation level from one web interface.
 
-The name is provisional. Before public launch, run a trademark, domain, GitHub organization, package name, and social handle check.
-
-Alternative names to consider:
-
-- OmniForge
-- AgentForge Studio
-- NeuralForge
-- ModelForge
-- ForgeMind
-- AICraft Studio
+Before public launch, run a trademark, domain, GitHub organization, package name, and social handle check for Orqen Studio.
 
 ## 2. Product Vision
 
-OmniForge Studio should combine the strongest parts of ChatGPT, Claude, DeepSeek, Cursor, OpenHands, GitHub automation, VS Code, terminal tools, and browser automation into a single self-hosted product.
+Orqen Studio should combine the strongest parts of ChatGPT, Claude, DeepSeek, Cursor, OpenHands, GitHub automation, VS Code, terminal tools, and browser automation into a single self-hosted product.
 
 The product should let a user:
 
@@ -34,7 +25,7 @@ The product should let a user:
 
 ## 3. Target Users
 
-OmniForge Studio is intended for a wide market:
+Orqen Studio is intended for a wide market:
 
 - non-technical users who want AI to help with files, web research, and simple automation;
 - solo developers who want a local Cursor/OpenHands-style assistant;

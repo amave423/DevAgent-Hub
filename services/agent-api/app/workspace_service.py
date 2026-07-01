@@ -467,7 +467,7 @@ def github_post(token: str, url: str, payload: dict[str, object]) -> dict[str, o
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
-            "User-Agent": "DevAgent-Hub",
+            "User-Agent": "Orqen-Studio",
             "X-GitHub-Api-Version": "2022-11-28",
         },
         method="POST",
@@ -486,7 +486,7 @@ def github_get(token: str, url: str) -> dict[str, object]:
         headers={
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {token}",
-            "User-Agent": "DevAgent-Hub",
+            "User-Agent": "Orqen-Studio",
             "X-GitHub-Api-Version": "2022-11-28",
         },
         method="GET",

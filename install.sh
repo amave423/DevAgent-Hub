@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-REPO_URL="${DEVAGENT_REPO_URL:-https://github.com/amave423/DevAgent-Hub.git}"
+REPO_URL="${DEVAGENT_REPO_URL:-https://github.com/amave423/Orqen-Studio.git}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 if [[ -f "$SCRIPT_DIR/package.json" && -d "$SCRIPT_DIR/installer" ]]; then
   DEFAULT_INSTALL_DIR="$SCRIPT_DIR"
 else
-  DEFAULT_INSTALL_DIR="$HOME/devagent-hub"
+  DEFAULT_INSTALL_DIR="$HOME/orqen-studio"
 fi
 
 INSTALL_DIR="${DEVAGENT_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
@@ -209,7 +209,7 @@ clone_or_update_repo() {
     return
   fi
 
-  log "Cloning DevAgent Hub"
+  log "Cloning Orqen Studio"
   mkdir -p "$(dirname "$INSTALL_DIR")"
   git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
 }
@@ -226,7 +226,7 @@ fi
 
 clone_or_update_repo
 
-log "Starting DevAgent Hub terminal installer"
+log "Starting Orqen Studio terminal installer"
 chmod +x "$INSTALL_DIR/installer/cli.js" || true
 node "$INSTALL_DIR/installer/cli.js" \
   --install-path "$INSTALL_DIR" \

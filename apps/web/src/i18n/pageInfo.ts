@@ -94,7 +94,7 @@ const ruInfo: Record<WorkbenchTab, PageInfoContent> = {
         title: "Что вводить",
         items: [
           "Обычные shell-команды: npm, git, python, dir/ls и другие.",
-          "Команды выполняются на машине, где запущен DevAgent Hub.",
+          "Команды выполняются на машине, где запущен Orqen Studio.",
         ],
       },
       {
@@ -198,8 +198,8 @@ const ruInfo: Record<WorkbenchTab, PageInfoContent> = {
       {
         title: "Интернет и браузер",
         items: [
-          "SearxNG URL опционален и нужен только для поискового API.",
           "Основной доступ агента к интернету идет через browser tool: Chromium может искать, открывать страницы, читать текст, делать скриншоты и скачивать файлы.",
+          "Отдельный SearxNG-поиск скрыт из интерфейса: для пользователя интернет управляется кнопкой браузерного доступа в чате.",
           "Если нужен полный браузерный доступ, установщик должен поставить Playwright/Chromium.",
         ],
       },
@@ -290,7 +290,7 @@ const enInfo: Record<WorkbenchTab, PageInfoContent> = {
         title: "Inputs",
         items: [
           "Run normal shell commands such as npm, git, python, dir/ls and others.",
-          "Commands execute on the machine running DevAgent Hub.",
+          "Commands execute on the machine running Orqen Studio.",
         ],
       },
       {
@@ -394,8 +394,8 @@ const enInfo: Record<WorkbenchTab, PageInfoContent> = {
       {
         title: "Internet and browser",
         items: [
-          "SearxNG URL is optional and only needed for search API integration.",
           "Primary agent internet access uses the browser tool: Chromium can search, open pages, read text, take screenshots and download files.",
+          "The separate SearxNG search field is hidden from the UI: internet access is controlled through the browser access button in chat.",
           "For full browser access, the installer must install Playwright/Chromium.",
         ],
       },

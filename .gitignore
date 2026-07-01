@@ -32,3 +32,4 @@ services/secrets.env.example
 installer/dist/
 vendor/
 du.exe.stackdump
+примеры неоффициальных апи.txt

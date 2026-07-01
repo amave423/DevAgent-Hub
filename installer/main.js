@@ -27,7 +27,7 @@ function createWindow() {
     height: 760,
     minWidth: 940,
     minHeight: 660,
-    title: "DevAgent Hub Installer",
+    title: "Orqen Studio Installer",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -57,7 +57,7 @@ ipcMain.handle("secrets:status", async (_event, rawSettings) => getSecretStatus(
 
 ipcMain.handle("dialog:select-install-dir", async () => {
   const result = await dialog.showOpenDialog({
-    title: "Select project directory",
+    title: "Select Orqen Studio install folder",
     properties: ["openDirectory", "createDirectory"],
   });
 
@@ -109,7 +109,7 @@ ipcMain.handle("devhub:start", async (event, rawSettings) => {
   if (activeDevHub) {
     return {
       ok: false,
-      error: "DevAgent Hub is already running.",
+      error: "Orqen Studio is already running.",
       runId: activeDevHub.runId,
       url: activeDevHub.url,
     };
@@ -136,7 +136,7 @@ ipcMain.handle("devhub:start", async (event, rawSettings) => {
 
   sendDevHubEvent(event.sender, runId, {
     type: "process-start",
-    message: `DevAgent Hub is starting: ${step.url}`,
+    message: `Orqen Studio is starting: ${step.url}`,
     url: step.url,
     command: [step.command, ...step.args].join(" "),
   });
@@ -166,7 +166,7 @@ ipcMain.handle("devhub:start", async (event, rawSettings) => {
   child.on("close", (code) => {
     sendDevHubEvent(event.sender, runId, {
       type: "process-exit",
-      message: `DevAgent Hub stopped with code ${code}`,
+      message: `Orqen Studio stopped with code ${code}`,
       exitCode: code,
     });
     activeDevHub = null;
@@ -177,7 +177,7 @@ ipcMain.handle("devhub:start", async (event, rawSettings) => {
 
 ipcMain.handle("devhub:stop", async (_event, runId) => {
   if (!activeDevHub || activeDevHub.runId !== runId) {
-    return { ok: false, error: "Running DevAgent Hub process was not found." };
+    return { ok: false, error: "Running Orqen Studio process was not found." };
   }
 
   activeDevHub.child.kill();

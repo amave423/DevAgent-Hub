@@ -1,8 +1,8 @@
 {
-  "name": "ai-agent-studio",
+  "name": "orqen-studio",
   "version": "0.1.0",
   "private": true,
-  "description": "DevAgent Hub — standalone multi-agent development workspace with OpenVSCode Server, GitHub automation and custom AI agent chains.",
+  "description": "Orqen Studio — standalone multi-agent development workspace with OpenVSCode Server, GitHub automation and custom AI agent chains.",
   "workspaces": [
     "apps/web",
     "installer"

@@ -182,10 +182,10 @@ CLOUD_PROVIDER_PRESETS = [
     ),
     CloudProviderPreset(
         id="custom",
-        name="Custom OpenAI-compatible",
+        name="Custom / reseller API",
         baseUrl="",
         apiKeyEnv="AGENT_STUDIO_API_KEY",
-        description="Any OpenAI-compatible API, proxy, reseller or self-hosted endpoint.",
+        description="Any OpenAI-compatible, Responses-compatible, Anthropic-compatible, proxy, reseller or self-hosted endpoint.",
     ),
 ]
 
@@ -465,7 +465,7 @@ class ModelManager:
 
         command = find_ollama_command()
         if not command:
-            raise RuntimeError("Ollama installed, but the executable was not found. Restart DevAgent Hub and try again.")
+            raise RuntimeError("Ollama installed, but the executable was not found. Restart Orqen Studio and try again.")
         self._update(download_id, progress=15, message="Ollama runtime installed. Pulling selected model...")
         return command
 
@@ -714,7 +714,7 @@ def ollama_custom_item(model_name: str) -> LocalModelCatalogItem:
         name=clean_name,
         provider="ollama",
         modelName=clean_name,
-        description="Custom Ollama model name. DevAgent Hub will run `ollama pull` for it.",
+        description="Custom Ollama model name. Orqen Studio will run `ollama pull` for it.",
         requirements=ModelRequirements(ramGb=0, diskGb=0),
     )
 
@@ -731,7 +731,7 @@ def ollama_library_search(query: str, limit: int) -> list[LocalModelCatalogItem]
         encoded = urllib.parse.urlencode({"q": needle})
         request = urllib.request.Request(
             f"https://ollama.com/search?{encoded}",
-            headers={"User-Agent": "DevAgent-Hub"},
+            headers={"User-Agent": "Orqen-Studio"},
             method="GET",
         )
         with urllib.request.urlopen(request, timeout=12) as response:
@@ -829,9 +829,7 @@ def provider_base_url(provider: str) -> str:
 
 
 def default_api_format(provider: str) -> str:
-    if provider == "anthropic":
-        return "anthropic-messages"
-    return "openai-chat-completions"
+    return "auto"
 
 
 def cleanup_empty_parents(start: Path, stop: Path) -> None:

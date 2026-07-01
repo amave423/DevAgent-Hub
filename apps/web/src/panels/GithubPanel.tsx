@@ -37,7 +37,7 @@ export function GithubPanel({
   info: PageInfoContent;
 }) {
   const [repoName, setRepoName] = useState(workspaceStatus?.github.repository ?? "devagent-hub");
-  const [commitMessage, setCommitMessage] = useState("Update DevAgent Hub workspace");
+  const [commitMessage, setCommitMessage] = useState("Update Orqen Studio workspace");
   const [prTitle, setPrTitle] = useState("");
   const [prBody, setPrBody] = useState("");
   const [prHead, setPrHead] = useState("feature-branch");
@@ -174,7 +174,7 @@ export function GithubPanel({
                     name: repoName.trim(),
                     owner: settings.githubOwner.trim() || null,
                     visibility: settings.githubDefaultVisibility,
-                    description: "Created by DevAgent Hub",
+                    description: "Created by Orqen Studio",
                   }),
                 )
               }

@@ -166,7 +166,7 @@ class TerminalManager:
         try:
             await session.start()
             read_task = asyncio.create_task(session.read_loop(ws))
-            await session.write("\r\nDevAgent Hub terminal ready.\r\n")
+            await session.write("\r\nOrqen Studio terminal ready.\r\n")
             while True:
                 message = await ws.receive_text()
                 payload = json.loads(message)

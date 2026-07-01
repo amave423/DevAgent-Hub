@@ -1,5 +1,5 @@
 appId: com.devagenthub.installer
-productName: DevAgent Hub Installer
+productName: Orqen Studio Installer
 artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
 asar: true
 npmRebuild: false
