@@ -183,7 +183,7 @@ export function App() {
     <main className="devhub-shell">
       <aside className="sidebar">
         <div className="product-mark">
-          <img className="orqen-mark" src="/orqen-logo.svg" alt="Orqen Studio" />
+          <img className="orqen-mark" src="/orqen-logo.png" alt="Orqen Studio" />
         </div>
         <nav aria-label="Workspace">
           {tabs.map((tab) => (
@@ -203,7 +203,7 @@ export function App() {
       <section className="main-surface">
         <header className="topbar">
           <div className="brand">
-            <img className="brand-mark" src="/orqen-logo.svg" alt="" />
+            <img className="brand-mark" src="/orqen-logo.png" alt="" />
             <div>
               <h1>Orqen Studio</h1>
               <span>{t("productSubtitle")}</span>
