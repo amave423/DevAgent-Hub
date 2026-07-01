@@ -10,7 +10,6 @@ export type CloudApiFormat = "openai-chat-completions" | "anthropic-messages" | 
 export type WorkbenchTab =
   | "chat"
   | "agents"
-  | "browser"
   | "code"
   | "terminal"
   | "preview"

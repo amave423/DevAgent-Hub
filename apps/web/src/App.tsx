@@ -4,7 +4,6 @@ import {
   Activity,
   Bot,
   BrainCircuit,
-  Compass,
   Code2,
   Github,
   Globe2,
@@ -28,7 +27,6 @@ import { Metric } from "./components/Metric";
 import { IntegrationCards } from "./components/IntegrationCard";
 import { ChatPanel } from "./panels/ChatPanel";
 import { AgentsPanel } from "./panels/AgentsPanel";
-import { BrowserPanel } from "./panels/BrowserPanel";
 import { CodePanel } from "./panels/CodePanel";
 import { TerminalPanel } from "./panels/TerminalPanel";
 import { PreviewPanel } from "./panels/PreviewPanel";
@@ -44,7 +42,6 @@ import { normalizeAgentOrder } from "./utils";
 const tabs: Array<{ id: WorkbenchTab; icon: ReactNode; labelKey: CopyKey }> = [
   { id: "chat", icon: <MessageSquareText size={18} />, labelKey: "tabChat" },
   { id: "agents", icon: <BrainCircuit size={18} />, labelKey: "tabAgents" },
-  { id: "browser", icon: <Compass size={18} />, labelKey: "tabBrowser" },
   { id: "code", icon: <Code2 size={18} />, labelKey: "tabCode" },
   { id: "terminal", icon: <TerminalSquare size={18} />, labelKey: "tabTerminal" },
   { id: "preview", icon: <Globe2 size={18} />, labelKey: "tabPreview" },
@@ -55,6 +52,15 @@ const tabs: Array<{ id: WorkbenchTab; icon: ReactNode; labelKey: CopyKey }> = [
 
 const ACTIVE_TAB_KEY = "devagent-hub.active-tab";
 const THEME_KEY = "devagent-hub.theme";
+
+function isWorkbenchTab(value: string | null): value is WorkbenchTab {
+  return Boolean(value && tabs.some((tab) => tab.id === value));
+}
+
+function tabFromHash(): WorkbenchTab | null {
+  const hash = window.location.hash.replace(/^#\/?/, "");
+  return isWorkbenchTab(hash) ? hash : null;
+}
 
 function loadStoredTheme(): "dark" | "light" | null {
   try {
@@ -117,7 +123,21 @@ export function App() {
 
   useEffect(() => {
     window.localStorage.setItem(ACTIVE_TAB_KEY, activeTab);
+    if (window.location.hash !== `#${activeTab}`) {
+      window.history.replaceState(null, "", `#${activeTab}`);
+    }
   }, [activeTab]);
+
+  useEffect(() => {
+    function onHashChange() {
+      const tab = tabFromHash();
+      if (tab) {
+        setActiveTab(tab);
+      }
+    }
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   useEffect(() => {
     const initial = loadStoredTheme();
@@ -257,7 +277,6 @@ export function App() {
                 info={pageInfo(language, "agents")}
               />
             )}
-            {activeTab === "browser" && <BrowserPanel t={t} info={pageInfo(language, "browser")} />}
             {activeTab === "code" && (
               <CodePanel
                 effectiveUrl={effectiveOpenVsCodeUrl}
@@ -345,8 +364,12 @@ function RunSummary({
 
 function loadActiveTab(): WorkbenchTab {
   try {
+    const hashTab = tabFromHash();
+    if (hashTab) {
+      return hashTab;
+    }
     const stored = window.localStorage.getItem(ACTIVE_TAB_KEY) as WorkbenchTab | null;
-    if (stored && tabs.some((tab) => tab.id === stored)) {
+    if (isWorkbenchTab(stored)) {
       return stored;
     }
     return "chat";
