@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { FileCode2, Github, KeyRound, Loader2, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
+import type { ReactNode } from "react";
+import { ChevronDown, FileCode2, Github, KeyRound, Loader2, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 import {
   commitGitChanges,
   createGitHubPullRequest,
@@ -95,13 +96,17 @@ export function GithubPanel({
         }
       />
       <section className="github-auth-card">
-        <div>
-          <KeyRound size={18} />
-          <div>
-            <strong>{t("githubToken")}</strong>
-            <span>{workspaceStatus?.github.tokenConfigured ? t("configured") : t("missing")}</span>
+        <header className="github-token-header">
+          <div className="github-token-title">
+            <KeyRound size={18} />
+            <div>
+              <strong>{t("githubToken")}</strong>
+            </div>
           </div>
-        </div>
+          <span className={`github-token-state ${workspaceStatus?.github.tokenConfigured ? "ok" : "missing"}`}>
+            {workspaceStatus?.github.tokenConfigured ? t("configured") : t("missing")}
+          </span>
+        </header>
         <div className="github-auth-row">
           <input
             type="password"
@@ -127,154 +132,160 @@ export function GithubPanel({
         </div>
         {authNotice && <div className="notice-strip inline">{authNotice}</div>}
       </section>
-      <div className="settings-grid">
-        <label className="field">
-          <span>{t("owner")}</span>
-          <input value={settings.githubOwner} onChange={(event) => patchSettings({ githubOwner: event.target.value })} placeholder="amave423" />
-          <small>{t("ownerHelp")}</small>
-        </label>
-        <label className="field">
-          <span>{t("repoName")}</span>
-          <input value={repoName} onChange={(event) => setRepoName(event.target.value)} placeholder="devagent-hub" />
-          <small>{t("repoNameHelp")}</small>
-        </label>
-        <label className="field">
-          <span>{t("defaultVisibility")}</span>
-          <select
-            value={settings.githubDefaultVisibility}
-            onChange={(event) => patchSettings({ githubDefaultVisibility: event.target.value as "private" | "public" })}
-          >
-            <option value="private">{t("private")}</option>
-            <option value="public">{t("public")}</option>
-          </select>
-          <small>{t("visibilityHelp")}</small>
-        </label>
-        <label className="field">
-          <span>{t("commitMessage")}</span>
-          <input value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} />
-          <small>{t("commitMessageHelp")}</small>
-        </label>
-      </div>
       <div className="github-status-grid">
-	        <Metric label={t("workspace")} value={workspaceStatus?.rootPath ?? t("unknown")} />
-	        <Metric label={t("branch")} value={workspaceStatus?.git.branch ?? t("notRepo")} />
-	        <Metric label={t("changedFiles")} value={String(changedFiles.length)} />
-	        <Metric label={t("token")} value={workspaceStatus?.github.tokenConfigured ? t("configured") : t("missing")} />
-      </div>
-      {workspaceStatus?.git.changes.length ? (
-        <div className="change-list">
-          {workspaceStatus.git.changes.slice(0, 10).map((change) => (
-            <code key={change}>{change}</code>
-          ))}
-        </div>
-      ) : null}
-      <div className="action-board">
-        <article>
-          <Github size={18} />
-          <strong>{t("createRepo")}</strong>
-	          <p>{t("githubCreateRepoDesc")}</p>
-          <button
-            className="secondary-button"
-            disabled={isBusy || !workspaceStatus?.github.tokenConfigured || !repoName.trim()}
-            onClick={() =>
-              void runAction(() =>
-                createGitHubRepo({
-                  name: repoName.trim(),
-                  owner: settings.githubOwner.trim() || null,
-                  visibility: settings.githubDefaultVisibility,
-                  description: "Created by DevAgent Hub",
-                }),
-              )
-            }
-          >
-            {t("create")}
-          </button>
-        </article>
-        <article>
-          <FileCode2 size={18} />
-          <strong>{t("commitChanges")}</strong>
-	          <p>{t("githubCommitDesc")}</p>
-          <button
-            className="secondary-button"
-            disabled={isBusy || changedFiles.length === 0 || !commitMessage.trim()}
-            onClick={() =>
-              void runAction(() =>
-                commitGitChanges({
-                  message: commitMessage.trim(),
-                  files: changedFiles,
-                }),
-              )
-            }
-          >
-            {t("commit")}
-          </button>
-        </article>
-        <article>
-          <Github size={18} />
-          <strong>{t("pushBranch")}</strong>
-	          <p>{t("githubPushDesc")}</p>
-          <button
-            className="secondary-button"
-            disabled={isBusy || !workspaceStatus?.git.isRepository || !workspaceStatus.git.branch}
-            onClick={() =>
-              void runAction(() =>
-                pushGitChanges({
-                  branch: workspaceStatus?.git.branch,
-                  setUpstream: true,
-                }),
-              )
-            }
-          >
-            {t("push")}
-          </button>
-        </article>
-        <article>
-          <ShieldCheck size={18} />
-          <strong>{t("pullRequest")}</strong>
-	          <p>{t("githubPrDesc")}</p>
-        </article>
+        <Metric label={t("workspace")} value={workspaceStatus?.rootPath ?? t("unknown")} />
+        <Metric label={t("branch")} value={workspaceStatus?.git.branch ?? t("notRepo")} />
+        <Metric label={t("changedFiles")} value={String(changedFiles.length)} />
+        <Metric label={t("token")} value={workspaceStatus?.github.tokenConfigured ? t("configured") : t("missing")} />
       </div>
 
-      <details className="pr-form">
-        <summary>{t("pullRequest")}</summary>
-        <div className="settings-grid">
+      <div className="github-action-stack">
+        <GithubActionPanel icon={<Github size={18} />} title={t("createRepo")} description={t("githubCreateRepoDesc")}>
+          <div className="settings-grid">
+            <label className="field">
+              <span>{t("owner")}</span>
+              <input value={settings.githubOwner} onChange={(event) => patchSettings({ githubOwner: event.target.value })} placeholder="amave423" />
+              <small>{t("ownerHelp")}</small>
+            </label>
+            <label className="field">
+              <span>{t("repoName")}</span>
+              <input value={repoName} onChange={(event) => setRepoName(event.target.value)} placeholder="devagent-hub" />
+              <small>{t("repoNameHelp")}</small>
+            </label>
+            <label className="field">
+              <span>{t("defaultVisibility")}</span>
+              <select
+                value={settings.githubDefaultVisibility}
+                onChange={(event) => patchSettings({ githubDefaultVisibility: event.target.value as "private" | "public" })}
+              >
+                <option value="private">{t("private")}</option>
+                <option value="public">{t("public")}</option>
+              </select>
+              <small>{t("visibilityHelp")}</small>
+            </label>
+          </div>
+          <div className="github-action-buttons">
+            <button
+              className="secondary-button"
+              disabled={isBusy || !workspaceStatus?.github.tokenConfigured || !repoName.trim()}
+              onClick={() =>
+                void runAction(() =>
+                  createGitHubRepo({
+                    name: repoName.trim(),
+                    owner: settings.githubOwner.trim() || null,
+                    visibility: settings.githubDefaultVisibility,
+                    description: "Created by DevAgent Hub",
+                  }),
+                )
+              }
+            >
+              {t("create")}
+            </button>
+          </div>
+        </GithubActionPanel>
+
+        <GithubActionPanel icon={<FileCode2 size={18} />} title={t("commitChanges")} description={t("githubCommitDesc")}>
           <label className="field">
-            <span>{t("prTitle")}</span>
-            <input value={prTitle} onChange={(event) => setPrTitle(event.target.value)} placeholder="Add new feature" />
+            <span>{t("commitMessage")}</span>
+            <input value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} />
+            <small>{t("commitMessageHelp")}</small>
           </label>
+          {workspaceStatus?.git.changes.length ? (
+            <div className="change-list">
+              {workspaceStatus.git.changes.slice(0, 10).map((change) => (
+                <code key={change}>{change}</code>
+              ))}
+            </div>
+          ) : null}
+          <div className="github-action-buttons">
+            <button
+              className="secondary-button"
+              disabled={isBusy || changedFiles.length === 0 || !commitMessage.trim()}
+              onClick={() =>
+                void runAction(() =>
+                  commitGitChanges({
+                    message: commitMessage.trim(),
+                    files: changedFiles,
+                  }),
+                )
+              }
+            >
+              {t("commit")}
+            </button>
+          </div>
+        </GithubActionPanel>
+
+        <GithubActionPanel icon={<Github size={18} />} title={t("pushBranch")} description={t("githubPushDesc")}>
+          <div className="settings-grid compact-grid">
+            <label className="field">
+              <span>{t("branch")}</span>
+              <input value={workspaceStatus?.git.branch ?? t("notRepo")} readOnly />
+            </label>
+            <label className="field">
+              <span>Remote</span>
+              <input value={workspaceStatus?.git.remoteUrl ?? "origin"} readOnly />
+            </label>
+          </div>
+          <div className="github-action-buttons">
+            <button
+              className="secondary-button"
+              disabled={isBusy || !workspaceStatus?.git.isRepository || !workspaceStatus.git.branch}
+              onClick={() =>
+                void runAction(() =>
+                  pushGitChanges({
+                    branch: workspaceStatus?.git.branch,
+                    setUpstream: true,
+                  }),
+                )
+              }
+            >
+              {t("push")}
+            </button>
+          </div>
+        </GithubActionPanel>
+
+        <GithubActionPanel icon={<ShieldCheck size={18} />} title={t("pullRequest")} description={t("githubPrDesc")}>
+          <div className="settings-grid">
+            <label className="field">
+              <span>{t("prTitle")}</span>
+              <input value={prTitle} onChange={(event) => setPrTitle(event.target.value)} placeholder="Add new feature" />
+            </label>
+            <label className="field">
+              <span>{t("prHead")}</span>
+              <input value={prHead} onChange={(event) => setPrHead(event.target.value)} placeholder="feature-branch" />
+            </label>
+            <label className="field">
+              <span>{t("prBase")}</span>
+              <input value="main" readOnly />
+            </label>
+          </div>
           <label className="field">
-            <span>{t("prHead")}</span>
-            <input value={prHead} onChange={(event) => setPrHead(event.target.value)} placeholder="feature-branch" />
+            <span>{t("prBody")}</span>
+            <textarea value={prBody} onChange={(event) => setPrBody(event.target.value)} rows={3} placeholder={t("describeChanges")} />
           </label>
-          <label className="field">
-            <span>{t("prBase")}</span>
-            <input value="main" readOnly />
-          </label>
-        </div>
-        <label className="field">
-          <span>{t("prBody")}</span>
-	          <textarea value={prBody} onChange={(event) => setPrBody(event.target.value)} rows={3} placeholder={t("describeChanges")} />
-        </label>
-        <button
-          className="secondary-button"
-          disabled={isBusy || !workspaceStatus?.github.tokenConfigured || !prTitle.trim() || !workspaceStatus?.github.repository}
-          onClick={() =>
-            void runAction(async () => {
-              const [owner, repo] = (workspaceStatus?.github.repository ?? "").split("/");
-              return createGitHubPullRequest({
-                owner: owner ?? settings.githubOwner,
-                repository: repo ?? repoName,
-                title: prTitle.trim(),
-                head: prHead.trim(),
-                base: "main",
-                body: prBody.trim(),
-              });
-            })
-          }
-        >
-          {t("createPR")}
-        </button>
-      </details>
+          <div className="github-action-buttons">
+            <button
+              className="secondary-button"
+              disabled={isBusy || !workspaceStatus?.github.tokenConfigured || !prTitle.trim() || !workspaceStatus?.github.repository}
+              onClick={() =>
+                void runAction(async () => {
+                  const [owner, repo] = (workspaceStatus?.github.repository ?? "").split("/");
+                  return createGitHubPullRequest({
+                    owner: owner ?? settings.githubOwner,
+                    repository: repo ?? repoName,
+                    title: prTitle.trim(),
+                    head: prHead.trim(),
+                    base: "main",
+                    body: prBody.trim(),
+                  });
+                })
+              }
+            >
+              {t("createPR")}
+            </button>
+          </div>
+        </GithubActionPanel>
+      </div>
 
       <IntegrationCards statuses={statuses.filter((status) => status.id === "github")} t={t} />
     </div>
@@ -292,4 +303,30 @@ function changedPath(statusLine: string): string | null {
 
 function isNonEmptyString(value: string | null): value is string {
   return Boolean(value);
+}
+
+function GithubActionPanel({
+  icon,
+  title,
+  description,
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <details className="github-action-panel">
+      <summary>
+        <span className="github-action-title">
+          {icon}
+          <strong>{title}</strong>
+        </span>
+        <span className="github-action-description">{description}</span>
+        <ChevronDown className="github-action-chevron" size={18} />
+      </summary>
+      <div className="github-action-body">{children}</div>
+    </details>
+  );
 }

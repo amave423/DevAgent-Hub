@@ -720,7 +720,8 @@ textarea:focus {
 
 .settings-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  align-items: start;
   gap: 12px;
 }
 
@@ -729,8 +730,15 @@ textarea:focus {
 }
 
 .field {
+  min-width: 0;
   display: grid;
   gap: 7px;
+}
+
+.field input,
+.field select,
+.field textarea {
+  min-width: 0;
 }
 
 .action-field {
@@ -744,6 +752,7 @@ textarea:focus {
 }
 
 .field small {
+  display: block;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.35;
@@ -905,6 +914,8 @@ textarea:focus {
 }
 
 .metric strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-size: 15px;
 }
 
@@ -1437,9 +1448,7 @@ textarea:focus {
 
 .chat-toolbar,
 .agent-chip-row,
-.composer-row,
-.github-auth-card > div,
-.github-auth-row {
+.composer-row {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1751,15 +1760,55 @@ textarea:focus {
 
 .github-auth-card {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   padding: 13px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel);
 }
 
-.github-auth-card > div:first-child {
+.github-token-header {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: 12px;
+}
+
+.github-token-title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.github-token-title > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.github-token-title strong {
+  line-height: 1.2;
+}
+
+.github-token-state {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.github-token-state.ok {
+  color: var(--accent);
+  border-color: var(--accent-strong);
+}
+
+.github-token-state.missing {
+  color: var(--muted);
 }
 
 .github-auth-card span {
@@ -1767,9 +1816,79 @@ textarea:focus {
   font-size: 12px;
 }
 
+.github-auth-row {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
 .github-auth-row input {
   min-width: 260px;
-  flex: 1;
+}
+
+.github-action-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.github-action-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.github-action-panel summary {
+  min-height: 62px;
+  display: grid;
+  grid-template-columns: minmax(180px, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 13px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.github-action-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.github-action-title {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text-strong);
+}
+
+.github-action-description {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.github-action-chevron {
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.github-action-panel[open] .github-action-chevron {
+  transform: rotate(180deg);
+}
+
+.github-action-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 13px 13px;
+  border-top: 1px solid var(--border);
+}
+
+.github-action-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .pr-form {
