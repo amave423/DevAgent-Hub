@@ -7,6 +7,7 @@ import {
   Copy,
   Download,
   History,
+  Info,
   Loader2,
   Paperclip,
   Pencil,
@@ -93,8 +94,9 @@ export function ChatPanel({
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
-    textarea.style.height = "auto";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
+    textarea.style.height = "46px";
+    const nextHeight = taskText.trim() ? Math.min(Math.max(textarea.scrollHeight, 46), 180) : 46;
+    textarea.style.height = `${nextHeight}px`;
   }, [taskText]);
 
   useEffect(() => {
@@ -394,26 +396,27 @@ export function ChatPanel({
       </aside>
 
       <section className="chat-workspace">
-        <PanelHeader title={t("tabChat")} subtitle={t("emptyChatHint")} info={info} infoLabel={t("info")} />
-        {notice && <div className="notice-strip inline">{notice}</div>}
-        <div className="chat-toolbar">
-          <label className="compact-select">
-            <span>{t("actionPolicy")}</span>
-            <select value={config.runtime.actionPolicy} onChange={(event) => setPolicy(event.target.value as ActionPolicy)}>
-              <option value="confirm">{t("confirmActions")}</option>
-              <option value="auto-confirm">{t("autoConfirmActions")}</option>
-              <option value="full-access">{t("fullAccess")}</option>
-            </select>
-          </label>
-          <span className={`runner-badge ${config.runtime.runnerMode}`}>{config.runtime.runnerMode}</span>
-          <div className="toolbar-spacer" />
-          <button className="icon-button" type="button" title={t("copyChat")} onClick={() => handleCopyChat()} disabled={!activeChat?.messages.length}>
-            <Copy size={15} />
-          </button>
-          <button className="icon-button" type="button" title={t("exportChat")} onClick={() => handleExportChat()} disabled={!activeChat?.messages.length}>
-            <Download size={15} />
-          </button>
+        <div className="chat-session-header">
+          <div>
+            <strong>{activeChat?.title || t("tabChat")}</strong>
+            <span>{config.runtime.runnerMode}</span>
+          </div>
+          <div className="chat-session-actions">
+            <button className="icon-button chat-page-info-button-proxy" type="button" title={t("info")} onClick={() => document.querySelector<HTMLButtonElement>(".chat-info-proxy .page-info-trigger")?.click()}>
+              <Info size={15} />
+            </button>
+            <button className="icon-button" type="button" title={t("copyChat")} onClick={() => handleCopyChat()} disabled={!activeChat?.messages.length}>
+              <Copy size={15} />
+            </button>
+            <button className="icon-button" type="button" title={t("exportChat")} onClick={() => handleExportChat()} disabled={!activeChat?.messages.length}>
+              <Download size={15} />
+            </button>
+          </div>
         </div>
+        <div className="chat-info-proxy">
+          <PanelHeader title={t("tabChat")} subtitle={t("emptyChatHint")} info={info} infoLabel={t("info")} />
+        </div>
+        {notice && <div className="notice-strip inline">{notice}</div>}
 
         <section className="chat-message-list">
           {messages.length === 0 && !isRunning && (
@@ -446,7 +449,7 @@ export function ChatPanel({
           )}
         </section>
 
-        <section className="chat-composer-v2">
+        <section className={`chat-composer-v2 ${taskText.trim() ? "has-input" : "empty-input"}`}>
           {pendingAttachments.length > 0 && (
             <div className="pending-attachments">
               {pendingAttachments.map((attachment) => (
@@ -492,7 +495,15 @@ export function ChatPanel({
                 <span>{t("fullAccessMode")}</span>
               </button>
             </div>
-            <label className="compact-select">
+            <label className="compact-select policy-select">
+              <span>{t("actionPolicy")}</span>
+              <select value={config.runtime.actionPolicy} onChange={(event) => setPolicy(event.target.value as ActionPolicy)}>
+                <option value="confirm">{t("confirmActions")}</option>
+                <option value="auto-confirm">{t("autoConfirmActions")}</option>
+                <option value="full-access">{t("fullAccess")}</option>
+              </select>
+            </label>
+            <label className="compact-select reasoning-select">
               <span>{t("reasoningLevel")}</span>
               <select
                 value={config.runtime.reasoningLevel}
@@ -523,14 +534,14 @@ export function ChatPanel({
               <Compass size={18} />
             </button>
             {isRunning ? (
-              <button className="danger-button" onClick={onCancel}>
+              <button className="danger-button composer-submit" title={t("cancel")} aria-label={t("cancel")} onClick={onCancel}>
                 <StopCircle size={16} />
-                {t("cancel")}
+                <span>{t("cancel")}</span>
               </button>
             ) : (
-              <button className="primary-button" onClick={() => void handleRunClick()} disabled={!taskText.trim() || enabledAgents.length === 0}>
+              <button className="primary-button composer-submit" title={t("run")} aria-label={t("run")} onClick={() => void handleRunClick()} disabled={!taskText.trim() || enabledAgents.length === 0}>
                 <Send size={16} />
-                {t("run")}
+                <span>{t("run")}</span>
               </button>
             )}
           </div>
@@ -562,10 +573,10 @@ function ReasoningPanel({
     <details className="reasoning-card live-reasoning" open={isRunning}>
       <summary>
         <span>
-          <ChevronDown size={16} />
-          {t("reasoning")}
+          <Sparkles size={16} />
+          {statusText}
         </span>
-        <em>{statusText}</em>
+        <ChevronDown size={15} />
       </summary>
       <div className="reasoning-stream">
         {visibleLines.map((line) => (
