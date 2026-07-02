@@ -171,6 +171,7 @@ export const ru = {
   actionPolicyDesc: "Backend хранит выбранную политику и использует ее для file/git/terminal действий агента.",
   chatHistory: "История",
   newChat: "Новый чат",
+  newChatDisabledEmpty: "Текущий чат пустой",
   selectedAgents: "Выбранные агенты",
   emptyChatTitle: "Новый рабочий чат",
   emptyChatHint: "Задай вопрос, приложи файлы или включи Браузер для доступа к сайтам.",

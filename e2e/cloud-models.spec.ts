@@ -12,6 +12,7 @@ test.describe("cloud API models", () => {
 
   for (const model of apiModels) {
     test(`tests and adds ${model.name}`, async ({ page, request }) => {
+      test.setTimeout(180_000);
       const originalConfig = await getAgentsConfig(request);
       try {
         await page.goto("/#settings");
@@ -24,7 +25,7 @@ test.describe("cloud API models", () => {
         const addButton = page.getByRole("button", { name: /Добавить облачную модель|Add cloud model/ });
         await expect(addButton).toBeEnabled();
         await addButton.click();
-        await expect(page.getByText(model.name, { exact: false })).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator(".cloud-model-row", { hasText: model.name }).first()).toBeVisible({ timeout: 15_000 });
       } finally {
         await saveAgentsConfig(request, originalConfig);
       }
@@ -33,9 +34,10 @@ test.describe("cloud API models", () => {
 });
 
 async function fillCloudModelForm(page: import("@playwright/test").Page, model: ApiModelCase): Promise<void> {
-  await page.getByLabel(/Провайдер|Provider/).selectOption(model.provider || "custom");
-  await page.getByLabel(/Модель|Model/).fill(model.name);
-  await page.getByLabel(/API URL|API URL/).fill(model.baseUrl);
-  await page.getByLabel(/Формат API|API format/).selectOption(model.apiFormat || "auto");
-  await page.getByLabel(/API-ключ|API key/).fill(model.apiKey);
+  const section = page.locator("section", { has: page.getByRole("heading", { name: /Облачные модели|Cloud models/i }) });
+  await section.getByLabel(/Провайдер|Provider/).selectOption(model.provider || "custom");
+  await section.getByRole("textbox", { name: /Модель|Model/ }).fill(model.name);
+  await section.getByLabel(/API URL|API URL/).fill(model.baseUrl);
+  await section.getByLabel(/Формат API|API format/).selectOption(model.apiFormat || "auto");
+  await section.getByPlaceholder("sk-...").fill(model.apiKey);
 }

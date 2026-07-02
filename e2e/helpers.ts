@@ -86,8 +86,22 @@ export async function existingChatIds(request: APIRequestContext): Promise<Set<s
 
 export function loadApiModelCases(): ApiModelCase[] {
   if (!fs.existsSync(secretPath)) return [];
-  const parsed = JSON.parse(fs.readFileSync(secretPath, "utf8")) as { models?: ApiModelCase[] };
-  return (parsed.models || []).filter((item) => item.name && item.baseUrl && item.apiKey);
+  const parsed = JSON.parse(fs.readFileSync(secretPath, "utf8")) as ApiModelCase[] | { models?: ApiModelCase[] };
+  const models = Array.isArray(parsed) ? parsed : parsed.models || [];
+  return models.filter((item) => {
+    if (!item.name || !item.baseUrl || !item.apiKey) return false;
+    try {
+      const host = new URL(item.baseUrl).hostname.toLowerCase();
+      if (host === "example.com" || host.endsWith(".example.com")) {
+        console.warn(`[e2e] Skipping ${item.name}: baseUrl uses reserved example.com host.`);
+        return false;
+      }
+      return true;
+    } catch {
+      console.warn(`[e2e] Skipping ${item.name}: baseUrl is not a valid URL.`);
+      return false;
+    }
+  });
 }
 
 export async function expectNoFrameworkOverlay(page: Page): Promise<void> {

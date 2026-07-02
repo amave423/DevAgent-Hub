@@ -3004,3 +3004,70 @@ textarea:focus {
   width: 106px;
   min-width: 106px;
 }
+
+/* ----- Themed native selects ----- */
+select {
+  color-scheme: dark;
+  border-radius: 14px;
+  border-color: var(--border-strong);
+  background-color: var(--panel-2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+select option {
+  color: var(--text);
+  background: var(--panel);
+}
+
+.field select,
+.settings-sections select,
+.github-panel select,
+.agent-card select,
+.agent-config-modal select {
+  min-height: 42px;
+  border-radius: 14px;
+  background-color: var(--panel-2);
+}
+
+.compact-select select,
+.composer-row > .compact-select select {
+  border-radius: 999px;
+  border-color: rgba(138, 159, 178, 0.34);
+  background-color: rgba(17, 24, 32, 0.92);
+}
+
+.composer-row > .policy-select select {
+  width: 184px;
+  min-width: 184px;
+}
+
+.composer-row > .reasoning-select select {
+  width: 112px;
+  min-width: 112px;
+}
+
+:root[data-theme="light"] select {
+  color-scheme: light;
+  color: #17212b;
+  border-color: #c9d6e2;
+  background-color: #f8fafc;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+:root[data-theme="light"] select option {
+  color: #17212b;
+  background: #ffffff;
+}
+
+:root[data-theme="light"] .compact-select select,
+:root[data-theme="light"] .composer-row > .compact-select select {
+  border-color: #c8d6e2;
+  background-color: #f7f9fc;
+}
+
+.icon-button:disabled,
+.primary-button:disabled,
+.danger-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}

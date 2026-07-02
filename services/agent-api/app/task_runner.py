@@ -183,7 +183,7 @@ class TaskRegistry:
                         model=model_name,
                         messages=messages,
                         temperature=0.7,
-                        max_tokens=config.runtime.maxOutputChars,
+                        max_tokens=llm_max_tokens(config.runtime.maxOutputChars),
                     )
                     if not result.text.strip():
                         raise RuntimeError(f"{agent.name}: model returned an empty response.")
@@ -294,3 +294,7 @@ def build_result_message(agent_name: str, result: LLMCallResult | None) -> str:
     usage_text = f", tokens={usage}" if usage is not None else ", tokens not returned"
     resolved = result.resolvedModel or result.requestedModel
     return f"{agent_name}: completed via {result.provider}/{resolved}{usage_text}, {result.latencyMs}ms."
+
+
+def llm_max_tokens(max_output_chars: int) -> int:
+    return max(256, min(max_output_chars, 4096))

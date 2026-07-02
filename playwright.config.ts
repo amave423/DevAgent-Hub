@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const browserChannel = process.env.E2E_BROWSER_CHANNEL || undefined;
 const skipWebServer = process.env.E2E_NO_WEBSERVER === "1";
+const secretMode = process.env.E2E_SECRET_MODE === "1";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -10,16 +11,19 @@ export default defineConfig({
     timeout: 15_000,
   },
   fullyParallel: false,
-  reporter: [
-    ["list"],
-    ["html", { open: "never", outputFolder: "playwright-report" }],
-  ],
+  preserveOutput: secretMode ? "never" : "failures-only",
+  reporter: secretMode
+    ? [["list"]]
+    : [
+        ["list"],
+        ["html", { open: "never", outputFolder: "playwright-report" }],
+      ],
   use: {
     baseURL: process.env.E2E_BASE_URL || "http://127.0.0.1:5173",
     viewport: { width: 1440, height: 900 },
-    trace: "retain-on-failure",
-    screenshot: "only-on-failure",
-    video: "retain-on-failure",
+    trace: secretMode ? "off" : "retain-on-failure",
+    screenshot: secretMode ? "off" : "only-on-failure",
+    video: secretMode ? "off" : "retain-on-failure",
     ...(browserChannel ? { channel: browserChannel } : {}),
   },
   webServer: skipWebServer

@@ -173,6 +173,7 @@ export const en: Record<CopyKey, string> = {
   actionPolicyDesc: "The backend stores the selected policy and uses it for file/git/terminal agent actions.",
   chatHistory: "History",
   newChat: "New chat",
+  newChatDisabledEmpty: "Current chat is empty",
   selectedAgents: "Selected agents",
   emptyChatTitle: "New work chat",
   emptyChatHint: "Ask a question, attach files, or enable Browser access to use websites.",

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
-import asyncio
 import time
 from typing import Any, Protocol, runtime_checkable
 from urllib.parse import urlparse, urlunparse
@@ -163,10 +163,14 @@ class OpenAIProvider:
         for attempt in attempts:
             try:
                 if attempt == "anthropic-messages":
-                    return await self._anthropic_messages(model, messages, temperature, max_tokens, started, api_format="auto/anthropic-messages")
-                if attempt == "openai-responses":
-                    return await self._openai_responses(model, messages, temperature, max_tokens, started, api_format="auto/openai-responses")
-                return await self._openai_chat_completions(model, messages, temperature, max_tokens, started, api_format="auto/openai-chat-completions")
+                    result = await self._anthropic_messages(model, messages, temperature, max_tokens, started, api_format="auto/anthropic-messages")
+                elif attempt == "openai-responses":
+                    result = await self._openai_responses(model, messages, temperature, max_tokens, started, api_format="auto/openai-responses")
+                else:
+                    result = await self._openai_chat_completions(model, messages, temperature, max_tokens, started, api_format="auto/openai-chat-completions")
+                if result.text.strip():
+                    return result
+                errors.append(f"{attempt}: empty response ({summarize_empty_result(result)})")
             except Exception as exc:
                 errors.append(f"{attempt}: {exc}")
 
@@ -203,11 +207,7 @@ class OpenAIProvider:
         choices = body.get("choices") if isinstance(body, dict) else []
         choice = choices[0] if isinstance(choices, list) and choices else {}
         message = choice.get("message") if isinstance(choice, dict) else {}
-        content = ""
-        if isinstance(message, dict):
-            content = str(message.get("content") or "")
-        elif isinstance(choice, dict):
-            content = str(choice.get("text") or "")
+        content = extract_chat_completion_text(body)
         usage = usage_from_openai_response(body.get("usage") if isinstance(body, dict) else None)
         return LLMCallResult(
             text=content,
@@ -236,16 +236,12 @@ class OpenAIProvider:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-        response = await self._post_json(
-            request_url,
-            headers=headers,
-            payload={
-                "model": model,
-                "input": messages_to_responses_input(messages),
-                "temperature": temperature,
-                "max_output_tokens": max_tokens,
-            },
-        )
+        payload: dict[str, Any] = {
+            "model": model,
+            "input": messages_to_responses_input(messages),
+            "stream": False,
+        }
+        response = await self._post_json(request_url, headers=headers, payload=payload)
         if response.status_code >= 400:
             raise RuntimeError(format_provider_error(response, request_url, format_name))
 
@@ -471,49 +467,100 @@ def anthropic_usage(raw_usage: Any) -> LLMUsage | None:
     )
 
 
-def messages_to_responses_input(messages: list[dict[str, str]]) -> list[dict[str, str]]:
-    result: list[dict[str, str]] = []
+def messages_to_responses_input(messages: list[dict[str, str]]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
     for message in messages:
         role = message.get("role") or "user"
         if role not in {"system", "user", "assistant", "developer"}:
             role = "user"
-        result.append({"role": role, "content": message.get("content", "")})
+        result.append({
+            "role": role,
+            "content": [{"type": "input_text", "text": message.get("content", "")}],
+        })
     return result
 
 
-def extract_response_text(body: dict[str, Any]) -> str:
-    output_text = body.get("output_text")
-    if isinstance(output_text, str):
-        return output_text
-
+def extract_chat_completion_text(body: dict[str, Any]) -> str:
     parts: list[str] = []
-    output = body.get("output")
-    if isinstance(output, list):
-        for item in output:
-            if not isinstance(item, dict):
-                continue
-            content = item.get("content")
-            if isinstance(content, list):
-                for block in content:
-                    if isinstance(block, dict):
-                        text = block.get("text")
-                        if isinstance(text, str):
-                            parts.append(text)
-            text = item.get("text")
-            if isinstance(text, str):
-                parts.append(text)
-
     choices = body.get("choices")
-    if isinstance(choices, list) and choices:
-        choice = choices[0]
-        if isinstance(choice, dict):
-            message = choice.get("message")
-            if isinstance(message, dict) and isinstance(message.get("content"), str):
-                parts.append(message["content"])
-            elif isinstance(choice.get("text"), str):
-                parts.append(choice["text"])
+    collect_text_parts(choices, parts)
+    if not parts:
+        collect_text_parts(body, parts)
+    if not parts:
+        collect_text_parts(choices, parts, include_reasoning=True)
+    if not parts:
+        collect_text_parts(body, parts, include_reasoning=True)
+    return join_text_parts(parts)
 
-    return "\n".join(part for part in parts if part).strip()
+
+def extract_response_text(body: dict[str, Any]) -> str:
+    parts: list[str] = []
+    collect_text_parts(body.get("output_text"), parts)
+    collect_text_parts(body.get("output"), parts)
+    collect_text_parts(body.get("choices"), parts)
+    if not parts:
+        collect_text_parts(body, parts)
+    if not parts:
+        collect_text_parts(body, parts, include_reasoning=True)
+    return join_text_parts(parts)
+
+
+FINAL_TEXT_KEYS = ("output_text", "content", "text", "answer", "response", "result", "completion")
+REASONING_TEXT_KEYS = ("reasoning_content", "reasoning", "thinking", "thoughts")
+NESTED_TEXT_KEYS = ("message", "delta", "data", "output", "outputs", "choices", "items")
+IGNORED_TEXT_VALUES = {"assistant", "user", "system", "developer", "completed", "in_progress", "queued"}
+
+
+def collect_text_parts(value: Any, parts: list[str], *, include_reasoning: bool = False, depth: int = 0) -> None:
+    if value is None or depth > 8:
+        return
+    if isinstance(value, str):
+        cleaned = value.strip()
+        if cleaned and cleaned.lower() not in IGNORED_TEXT_VALUES:
+            parts.append(cleaned)
+        return
+    if isinstance(value, list):
+        for item in value:
+            collect_text_parts(item, parts, include_reasoning=include_reasoning, depth=depth + 1)
+        return
+    if not isinstance(value, dict):
+        return
+
+    for key in FINAL_TEXT_KEYS:
+        if key in value:
+            collect_text_parts(value.get(key), parts, include_reasoning=include_reasoning, depth=depth + 1)
+
+    if include_reasoning:
+        for key in REASONING_TEXT_KEYS:
+            if key in value:
+                collect_text_parts(value.get(key), parts, include_reasoning=include_reasoning, depth=depth + 1)
+
+    for key in NESTED_TEXT_KEYS:
+        if key in value:
+            collect_text_parts(value.get(key), parts, include_reasoning=include_reasoning, depth=depth + 1)
+
+
+def join_text_parts(parts: list[str]) -> str:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        cleaned = part.strip()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        normalized.append(cleaned)
+    return "\n".join(normalized).strip()
+
+
+def summarize_empty_result(result: LLMCallResult) -> str:
+    details = []
+    if result.requestUrl:
+        details.append(f"url={result.requestUrl}")
+    if result.finishReason:
+        details.append(f"finish={result.finishReason}")
+    if result.resolvedModel and result.resolvedModel != result.requestedModel:
+        details.append(f"resolved={result.resolvedModel}")
+    return ", ".join(details) or "provider returned no text fields"
 
 
 def infer_format_from_url(base_url: str | None, endpoint_path: str | None) -> str | None:
@@ -575,6 +622,9 @@ def parse_json_response(response: httpx.Response, request_url: str, api_format: 
     try:
         body = response.json()
     except ValueError as exc:
+        sse_body = parse_sse_json_response(response.text)
+        if sse_body is not None:
+            return sse_body
         text = " ".join(strip_html(response.text[:1200]).split())
         raise RuntimeError(
             f"Provider returned non-JSON response at {request_url}. "
@@ -583,6 +633,52 @@ def parse_json_response(response: httpx.Response, request_url: str, api_format: 
     if not isinstance(body, dict):
         raise RuntimeError(f"Provider returned unsupported JSON at {request_url}. Expected object.")
     return body
+
+
+def parse_sse_json_response(text: str) -> dict[str, Any] | None:
+    if "data:" not in text:
+        return None
+    last_body: dict[str, Any] | None = None
+    text_parts: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line.startswith("data:"):
+            continue
+        data = line[5:].strip()
+        if not data or data == "[DONE]":
+            continue
+        try:
+            event = json.loads(data)
+        except ValueError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        error = event.get("error")
+        if isinstance(error, dict):
+            message = error.get("message") or error
+            raise RuntimeError(f"Provider returned SSE error: {message}")
+
+        event_type = str(event.get("type") or "")
+        if event_type == "response.output_text.delta" and isinstance(event.get("delta"), str):
+            text_parts.append(event["delta"])
+        if event_type == "response.output_text.done" and isinstance(event.get("text"), str):
+            text_parts = [event["text"]]
+        part = event.get("part")
+        if isinstance(part, dict):
+            collect_text_parts(part, text_parts)
+        item = event.get("item")
+        if isinstance(item, dict):
+            collect_text_parts(item, text_parts)
+
+        response = event.get("response")
+        if isinstance(response, dict):
+            last_body = response
+        else:
+            last_body = event
+
+    if last_body is not None and text_parts and not extract_response_text(last_body):
+        last_body = {**last_body, "output_text": join_text_parts(text_parts)}
+    return last_body
 
 
 def strip_html(text: str) -> str:

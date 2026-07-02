@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .config_store import ConfigStore
 from .llm import OpenAIProvider
+from .workspace_service import read_secret, set_secret
 from .models import (
     AddCloudModelRequest,
     AgentModel,
@@ -197,7 +198,19 @@ class ModelManager:
         self.downloads_path = self.workspace_root / ".devagent" / "model-downloads.json"
         self.downloads: dict[str, ModelDownloadState] = self._load_downloads()
         self._workers: dict[str, asyncio.Task[None]] = {}
+        self._load_configured_secrets()
 
+    def _load_configured_secrets(self) -> None:
+        try:
+            config = self.config_store.load()
+        except Exception:
+            return
+        for model in config.models:
+            if not model.apiKeyEnv or os.getenv(model.apiKeyEnv):
+                continue
+            secret = read_secret(self.workspace_root, model.apiKeyEnv)
+            if secret:
+                os.environ[model.apiKeyEnv] = secret
     def catalog(self) -> ModelCatalogResponse:
         local_models = merge_ollama_installed_models(LOCAL_MODEL_CATALOG, ollama_installed_models())
         return ModelCatalogResponse(
@@ -320,7 +333,9 @@ class ModelManager:
         endpoint_path = (request.endpointPath or "").strip() or None
 
         if request.apiKey and api_key_env:
-            os.environ[api_key_env] = request.apiKey.strip()
+            api_key = request.apiKey.strip()
+            os.environ[api_key_env] = api_key
+            set_secret(self.workspace_root, api_key_env, api_key)
 
         model = AgentModel(
             id=model_id,

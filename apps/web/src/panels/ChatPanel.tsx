@@ -161,12 +161,20 @@ export function ChatPanel({
   }
 
   async function handleNewChat() {
+    setNotice(null);
+    if (activeChat && activeChat.messages.length === 0) return;
     const chat = await createChat();
     setActiveChat(chat);
     setActiveChatId(chat.id);
     setPendingAttachments([]);
     setTaskText("");
     await refreshChatList();
+  }
+
+  function handleSelectChat(chatId: string) {
+    setNotice(null);
+    setPendingAttachments([]);
+    setActiveChatId(chatId);
   }
 
   async function handleDeleteChat(chatId: string) {
@@ -345,7 +353,11 @@ export function ChatPanel({
   }
 
   const messages = activeChat?.messages ?? [];
-  const reasoningLines = buildReasoningLines(logs, t);
+  const activeChatIsEmpty = Boolean(activeChat && activeChat.messages.length === 0);
+  const activeTaskState = taskState && (!taskState.chatId || taskState.chatId === activeChatId) ? taskState : null;
+  const activeTaskLogs = activeTaskState ? logs.filter((log) => log.taskId === activeTaskState.taskId) : [];
+  const reasoningLines = buildReasoningLines(activeTaskLogs, t);
+  const isActiveChatRunning = isRunning && Boolean(activeTaskState);
   const visibleRunMode: AgentRunMode = config.runtime.agentMode === "full-access" ? "normal" : config.runtime.agentMode;
 
   return (
@@ -353,7 +365,7 @@ export function ChatPanel({
       <aside className="chat-history">
         <div className="chat-history-header">
           <strong>{t("chatHistory")}</strong>
-          <button className="icon-button" type="button" title={t("newChat")} onClick={() => void handleNewChat()}>
+          <button className="icon-button" type="button" title={activeChatIsEmpty ? t("newChatDisabledEmpty") : t("newChat")} onClick={() => void handleNewChat()} disabled={activeChatIsEmpty}>
             <Plus size={16} />
           </button>
         </div>
@@ -378,7 +390,7 @@ export function ChatPanel({
                   }}
                 />
               ) : (
-                <button onClick={() => setActiveChatId(chat.id)} type="button">
+                <button onClick={() => handleSelectChat(chat.id)} type="button">
                   <strong>{chat.title}</strong>
                   <span>{chat.lastMessage || formatDate(chat.updatedAt, language)}</span>
                 </button>
@@ -439,11 +451,11 @@ export function ChatPanel({
             />
           ))}
 
-          {(isRunning || reasoningLines.length > 0 || taskState?.error) && (
+          {(isActiveChatRunning || reasoningLines.length > 0 || activeTaskState?.error) && (
             <ReasoningPanel
               lines={reasoningLines}
-              taskState={taskState}
-              isRunning={isRunning}
+              taskState={activeTaskState}
+              isRunning={isActiveChatRunning}
               t={t}
               language={language}
             />
