@@ -382,8 +382,16 @@ a {
   border-bottom: 1px solid #305d91;
 }
 
+.success-strip {
+  padding: 8px 16px;
+  color: #b9f6d0;
+  background: #103d2b;
+  border-bottom: 1px solid var(--accent);
+}
+
 .error-strip.inline,
-.notice-strip.inline {
+.notice-strip.inline,
+.success-strip.inline {
   border-radius: 7px;
   border: 1px solid currentColor;
 }

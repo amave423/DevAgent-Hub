@@ -67,6 +67,7 @@ export function SettingsPanel({
   const [isTestingCloudModel, setIsTestingCloudModel] = useState(false);
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
   const [cloudTestNotice, setCloudTestNotice] = useState<string | null>(null);
+  const [cloudTestStatus, setCloudTestStatus] = useState<"success" | "error" | null>(null);
   const [cloudForm, setCloudForm] = useState<AddCloudModelRequest>({
     id: "",
     name: "",
@@ -325,6 +326,7 @@ export function SettingsPanel({
   async function handleTestCloudModel() {
     if (!cloudForm.name.trim()) return;
     setCloudTestNotice(null);
+    setCloudTestStatus(null);
     setIsTestingCloudModel(true);
     try {
       const result = await testCloudModel({
@@ -342,8 +344,10 @@ export function SettingsPanel({
       const tokenText = tokens == null ? t("tokensNotReturned") : `${tokens} ${t("tokens")}`;
       const urlText = result.result?.requestUrl ? `${t("requestUrl")}: ${result.result.requestUrl}; ` : "";
       setCloudTestNotice(`${result.message}: ${urlText}${resolved}; ${tokenText}; ${result.result?.latencyMs ?? 0} ms${result.output ? `; ${result.output}` : ""}`);
+      setCloudTestStatus("success");
     } catch (caught) {
       setCloudTestNotice(caught instanceof Error ? caught.message : "Cloud model test failed.");
+      setCloudTestStatus("error");
     } finally {
       setIsTestingCloudModel(false);
     }
@@ -483,7 +487,9 @@ export function SettingsPanel({
         <section>
           <h3>{t("cloudModels")}</h3>
           <p className="settings-note">{t("cloudApiNote")}</p>
-          {cloudTestNotice && <div className="notice-strip inline">{cloudTestNotice}</div>}
+          {cloudTestNotice && (
+            <div className={`${cloudTestStatus === "error" ? "error-strip" : "success-strip"} inline`}>{cloudTestNotice}</div>
+          )}
           <div className="settings-grid">
             <label className="field">
               <span>{t("cloudProvider")}</span>
