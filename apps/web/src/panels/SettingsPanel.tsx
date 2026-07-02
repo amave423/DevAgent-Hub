@@ -68,6 +68,7 @@ export function SettingsPanel({
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
   const [cloudTestNotice, setCloudTestNotice] = useState<string | null>(null);
   const [cloudTestStatus, setCloudTestStatus] = useState<"success" | "error" | null>(null);
+  const [validatedCloudFingerprint, setValidatedCloudFingerprint] = useState<string | null>(null);
   const [cloudForm, setCloudForm] = useState<AddCloudModelRequest>({
     id: "",
     name: "",
@@ -106,6 +107,8 @@ export function SettingsPanel({
   const cloudProviderOptions = catalog?.cloudProviders ?? [
     { id: "custom", name: "Custom", baseUrl: "", apiKeyEnv: "AGENT_STUDIO_API_KEY", description: "" },
   ];
+  const cloudFingerprint = cloudModelFingerprint(cloudForm);
+  const canAddCloudModel = cloudTestStatus === "success" && validatedCloudFingerprint === cloudFingerprint;
   const canDownloadLocalModel =
     Boolean(selectedLocalModel) &&
     !isDownloading &&
@@ -246,6 +249,9 @@ export function SettingsPanel({
     try {
       const result = await searchModels(localSource, modelSearchQuery.trim());
       setSearchResults(result);
+      if (modelSearchQuery.trim() && result.models.length === 0) {
+        setSettingsNotice(t("modelNotFoundSearch"));
+      }
       const first = result.models[0];
       if (first) {
         setSelectedLocalModelId(first.id);
@@ -284,10 +290,16 @@ export function SettingsPanel({
 
   function updateCloudForm(patch: Partial<AddCloudModelRequest>) {
     setCloudForm((current) => ({ ...current, ...patch }));
+    setCloudTestNotice(null);
+    setCloudTestStatus(null);
+    setValidatedCloudFingerprint(null);
   }
 
   function selectCloudProvider(provider: string) {
     const preset = catalog?.cloudProviders.find((item) => item.id === provider);
+    setCloudTestNotice(null);
+    setCloudTestStatus(null);
+    setValidatedCloudFingerprint(null);
     setCloudForm((current) => ({
       ...current,
       provider,
@@ -299,7 +311,7 @@ export function SettingsPanel({
   }
 
   async function handleAddCloudModel() {
-    if (!cloudForm.name.trim()) return;
+    if (!cloudForm.name.trim() || !canAddCloudModel) return;
     setSettingsNotice(null);
     try {
       const saved = await addCloudModel({
@@ -317,6 +329,9 @@ export function SettingsPanel({
       });
       patchConfig(() => saved);
       setSettingsNotice(t("cloudModelAdded"));
+      setValidatedCloudFingerprint(null);
+      setCloudTestStatus(null);
+      setCloudTestNotice(null);
       setCloudForm((current) => ({ ...current, id: "", name: "", modelName: "", apiKey: "", endpointPath: "", description: "" }));
     } catch (caught) {
       setSettingsNotice(caught instanceof Error ? caught.message : "Cloud model was not added.");
@@ -345,9 +360,11 @@ export function SettingsPanel({
       const urlText = result.result?.requestUrl ? `${t("requestUrl")}: ${result.result.requestUrl}; ` : "";
       setCloudTestNotice(`${result.message}: ${urlText}${resolved}; ${tokenText}; ${result.result?.latencyMs ?? 0} ms${result.output ? `; ${result.output}` : ""}`);
       setCloudTestStatus("success");
+      setValidatedCloudFingerprint(cloudFingerprint);
     } catch (caught) {
       setCloudTestNotice(caught instanceof Error ? caught.message : "Cloud model test failed.");
       setCloudTestStatus("error");
+      setValidatedCloudFingerprint(null);
     } finally {
       setIsTestingCloudModel(false);
     }
@@ -536,7 +553,7 @@ export function SettingsPanel({
               {isTestingCloudModel ? <Loader2 className="spin" size={16} /> : <TestTube2 size={16} />}
               {isTestingCloudModel ? t("testingModel") : t("testModel")}
             </button>
-            <button className="secondary-button" onClick={() => void handleAddCloudModel()} disabled={!cloudForm.name.trim()}>
+            <button className="secondary-button" onClick={() => void handleAddCloudModel()} disabled={!cloudForm.name.trim() || !canAddCloudModel}>
               <Cloud size={16} />
               {t("addCloudModel")}
             </button>
@@ -616,6 +633,18 @@ export function SettingsPanel({
       </div>
     </div>
   );
+}
+
+function cloudModelFingerprint(form: AddCloudModelRequest): string {
+  return JSON.stringify({
+    name: (form.name ?? "").trim(),
+    modelName: (form.modelName ?? "").trim(),
+    provider: (form.provider ?? "custom").trim(),
+    baseUrl: (form.baseUrl ?? "").trim(),
+    apiKey: (form.apiKey ?? "").trim(),
+    apiKeyEnv: (form.apiKeyEnv ?? "").trim(),
+    apiFormat: form.apiFormat || "auto",
+  });
 }
 
 function formatRequirements(model: { requirements: { ramGb: number; diskGb: number }; sizeBytes?: number | null }, t: (key: CopyKey) => string): string {

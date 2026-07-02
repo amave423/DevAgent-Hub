@@ -7,13 +7,17 @@ from pathlib import Path
 
 import httpx
 import websockets
+
+if os.name == "nt":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .chat_store import ChatStore
-from .browser_service import BrowserService, extract_urls
+from .browser_service import BrowserService, describe_exception, extract_urls
 from .config_store import ConfigStore
 from .model_manager import ModelManager
 from .models import (
@@ -410,7 +414,7 @@ async def search_models(source: str, q: str = "", limit: int = 25) -> ModelSearc
     try:
         return model_manager.search(source, q, limit=max(1, min(limit, 50)))
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 @app.get("/api/models/ollama/search", response_model=ModelSearchResponse)
@@ -421,7 +425,7 @@ async def search_ollama_models(q: str = "", page: int = 1, limit: int = 25) -> M
         _ = page
         return model_manager.search("ollama", q, limit=max(1, min(limit, 50)))
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 @app.get("/api/models/huggingface/files", response_model=ModelFileListResponse)
@@ -429,7 +433,7 @@ async def list_huggingface_files(repo_id: str) -> ModelFileListResponse:
     try:
         return model_manager.huggingface_files(repo_id)
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 @app.post("/api/models/local/download", response_model=ModelDownloadState)
@@ -437,7 +441,7 @@ async def download_local_model(request: ModelDownloadRequest) -> ModelDownloadSt
     try:
         return await model_manager.start_download(request)
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 @app.get("/api/models/local/downloads", response_model=list[ModelDownloadState])
@@ -460,7 +464,7 @@ async def retry_model_download(download_id: str) -> ModelDownloadState:
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Model download not found") from exc
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 @app.delete("/api/models/local/{source}/{model_ref:path}", response_model=AgentsConfig)
@@ -468,7 +472,7 @@ async def delete_local_model(source: str, model_ref: str) -> AgentsConfig:
     try:
         return await model_manager.delete_local_model(source, model_ref)
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 @app.delete("/api/models/cloud/all", response_model=AgentsConfig)
@@ -476,7 +480,7 @@ async def delete_all_cloud_models() -> AgentsConfig:
     try:
         return model_manager.delete_all_cloud_models()
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 @app.delete("/api/models/cloud/{model_ref:path}", response_model=AgentsConfig)
@@ -484,7 +488,7 @@ async def delete_cloud_model(model_ref: str) -> AgentsConfig:
     try:
         return model_manager.delete_cloud_model(model_ref)
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 @app.post("/api/models/cloud", response_model=AgentsConfig)
@@ -492,7 +496,7 @@ async def add_cloud_model(request: AddCloudModelRequest) -> AgentsConfig:
     try:
         return model_manager.add_cloud_model(request)
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 @app.post("/api/models/cloud/test", response_model=CloudModelTestResponse)
@@ -500,7 +504,7 @@ async def test_cloud_model(request: CloudModelTestRequest) -> CloudModelTestResp
     try:
         return await model_manager.test_cloud_model(request)
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -517,7 +521,7 @@ async def web_search(request: WebSearchRequest) -> WebSearchResponse:
             base_url=settings.webSearchBaseUrl,
         )
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 @app.post("/api/tools/web-search/test", response_model=WebSearchResponse)
@@ -530,7 +534,7 @@ async def test_web_search(request: WebSearchRequest) -> WebSearchResponse:
             base_url=settings.webSearchBaseUrl,
         )
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 @app.get("/api/browser/status", response_model=BrowserStatusResponse)
@@ -543,7 +547,7 @@ async def browser_open(request: BrowserOpenRequest) -> BrowserPageResponse:
     try:
         return await browser_service.open(request)
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 @app.post("/api/browser/screenshot", response_model=BrowserScreenshotResponse)
@@ -551,7 +555,7 @@ async def browser_screenshot(request: BrowserScreenshotRequest) -> BrowserScreen
     try:
         return await browser_service.screenshot(request)
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 @app.post("/api/browser/download", response_model=BrowserDownloadResponse)
@@ -559,7 +563,7 @@ async def browser_download(request: BrowserDownloadRequest) -> BrowserDownloadRe
     try:
         return await browser_service.download(request)
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -696,7 +700,7 @@ async def start_openvscode(request: StartOpenVSCodeRequest) -> WorkspaceStatus:
         openvscode_manager.start(request)
         return workspace_service.status(openvscode_manager)
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 @app.post("/api/workspace/openvscode/stop", response_model=WorkspaceStatus)
@@ -712,7 +716,7 @@ async def install_openvscode() -> WorkspaceActionResponse:
         result = openvscode_manager.install()
         return result
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -801,7 +805,7 @@ async def set_git_remote(request: SetGitRemoteRequest) -> WorkspaceActionRespons
     try:
         return workspace_service.set_remote(request)
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 @app.post("/api/workspace/git/commit", response_model=WorkspaceActionResponse)
@@ -809,7 +813,7 @@ async def commit_git_changes(request: GitCommitRequest) -> WorkspaceActionRespon
     try:
         return workspace_service.commit(request)
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 @app.post("/api/workspace/git/push", response_model=WorkspaceActionResponse)
@@ -817,7 +821,7 @@ async def push_git_changes(request: GitPushRequest) -> WorkspaceActionResponse:
     try:
         return workspace_service.push(request)
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -829,7 +833,7 @@ async def save_github_token(request: GitHubTokenRequest) -> GitHubTokenTestRespo
     try:
         return github_service.save_token(request.token)
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 @app.post("/api/github/test", response_model=GitHubTokenTestResponse)
@@ -837,7 +841,7 @@ async def test_github_token() -> GitHubTokenTestResponse:
     try:
         return github_service.test_token()
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 @app.delete("/api/github/token", response_model=GitHubTokenTestResponse)
@@ -845,7 +849,7 @@ async def delete_github_token() -> GitHubTokenTestResponse:
     try:
         return github_service.delete_token()
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 @app.post("/api/workspace/github/repos", response_model=WorkspaceActionResponse)
@@ -853,7 +857,7 @@ async def create_github_repo(request: GitHubCreateRepoRequest) -> WorkspaceActio
     try:
         return github_service.create_repo(request)
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 @app.post("/api/workspace/github/pull-request", response_model=WorkspaceActionResponse)
@@ -861,7 +865,7 @@ async def create_github_pull_request(request: GitHubPullRequestRequest) -> Works
     try:
         return github_service.create_pull_request(request)
     except Exception as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=describe_exception(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -905,6 +909,18 @@ def should_auto_browse(content: str) -> bool:
         "актуальн",
         "сегодня",
         "скачай",
+        "скачать",
+        "загрузи файл",
+        "интернет",
+        "найди",
+        "погугли",
+        "сайт",
+        "страниц",
+        "новости",
+        "курс",
+        "цена",
+        "что сейчас",
+        "кто сейчас",
         "download",
         "open the site",
         "open this page",
@@ -917,7 +933,6 @@ def should_auto_browse(content: str) -> bool:
         "today",
     )
     return any(marker in text for marker in markers) or bool(extract_urls(content))
-
 
 def should_auto_download(content: str) -> bool:
     text = content.lower()

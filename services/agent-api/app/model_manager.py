@@ -220,8 +220,6 @@ class ModelManager:
                 ]
                 library_matches = ollama_library_search(query, limit)
                 models = dedupe_catalog_items([*local_matches, *library_matches], limit)
-                if not any((model.modelName or model.id).lower() == needle for model in models):
-                    models.insert(0, ollama_custom_item(query.strip()))
             else:
                 models = dedupe_catalog_items([*models, *ollama_popular_items()], limit)
             return ModelSearchResponse(source=normalized_source, models=models[:limit])

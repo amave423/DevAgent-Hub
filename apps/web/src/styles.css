@@ -1263,17 +1263,20 @@ textarea:focus {
 }
 
 .reasoning-card {
-  border: 1px solid var(--border);
+  width: min(980px, 100%);
+  align-self: flex-start;
+  border: 0;
   border-radius: 8px;
-  background: var(--surface);
+  background: transparent;
 }
 
 .reasoning-card summary {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
-  padding: 12px 14px;
+  padding: 4px 0;
+  color: var(--muted);
   cursor: pointer;
   list-style: none;
 }
@@ -1295,23 +1298,25 @@ textarea:focus {
   font-style: normal;
 }
 
-.reasoning-log {
+.reasoning-stream {
   display: grid;
   gap: 8px;
-  padding: 0 14px 14px;
-}
-
-.reasoning-log p {
-  margin: 0;
-  display: grid;
-  grid-template-columns: 140px minmax(0, 1fr);
-  gap: 10px;
-  color: var(--text);
+  padding: 8px 0 2px 24px;
+  color: var(--muted);
   font-size: 13px;
+  line-height: 1.55;
 }
 
-.reasoning-log p.error {
+.reasoning-stream p {
+  margin: 0;
+}
+
+.reasoning-stream p.error {
   color: #ffd7d7;
+}
+
+.reasoning-time {
+  display: none;
 }
 
 .download-list {
@@ -1637,6 +1642,59 @@ textarea:focus {
   white-space: pre-wrap;
 }
 
+.markdown-content {
+  display: grid;
+  gap: 10px;
+  color: var(--text);
+  line-height: 1.62;
+}
+
+.markdown-content p,
+.markdown-content ul,
+.markdown-content ol,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5 {
+  margin: 0;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  padding-left: 20px;
+}
+
+.markdown-content li + li {
+  margin-top: 4px;
+}
+
+.markdown-content code {
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: var(--panel-2);
+  color: var(--accent);
+  font-family: Consolas, Monaco, monospace;
+  font-size: 0.92em;
+}
+
+.markdown-code-block {
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #090d11;
+}
+
+.markdown-code-block code {
+  padding: 0;
+  background: transparent;
+  color: #dce8f4;
+}
+
+.markdown-content a {
+  color: var(--accent);
+}
+
 .message-attachments,
 .pending-attachments {
   display: flex;
@@ -1695,29 +1753,34 @@ textarea:focus {
 .chat-composer-v2 {
   display: grid;
   gap: 8px;
-  padding: 10px;
+  padding: 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 22px;
   background: var(--panel);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.18);
 }
 
 .composer-row {
   display: grid;
-  grid-template-columns: 46px minmax(280px, 1fr) 46px auto;
+  grid-template-columns: 42px auto minmax(0, 1fr) auto 42px auto;
   grid-template-areas:
-    "attach input browser run"
-    ". modes reasoning reasoning";
-  align-items: stretch;
+    "input input input input input input"
+    "attach modes modes reasoning browser run";
+  align-items: center;
   gap: 8px;
 }
 
 .composer-row textarea {
   grid-area: input;
   width: 100%;
-  min-height: 46px;
-  max-height: 180px;
+  min-height: 48px;
+  max-height: 220px;
+  padding: 12px 2px;
+  border-color: transparent;
+  background: transparent;
   resize: none;
   overflow-y: hidden;
+  font-size: 15px;
 }
 
 .composer-row textarea:focus {
@@ -1759,15 +1822,16 @@ textarea:focus {
 }
 
 .composer-row > .icon-button {
-  width: 46px;
-  height: 46px;
+  width: 42px;
+  height: 42px;
 }
 
 .composer-row > .primary-button,
 .composer-row > .danger-button {
   grid-area: run;
-  height: auto;
-  min-width: 128px;
+  height: 42px;
+  min-width: 118px;
+  border-radius: 14px;
 }
 
 .composer-modes {
@@ -1775,6 +1839,7 @@ textarea:focus {
   min-width: 0;
   justify-self: start;
   flex-wrap: wrap;
+  border-radius: 14px;
 }
 
 .search-run-button.active {
@@ -2253,12 +2318,12 @@ textarea:focus {
   }
 
   .composer-row {
-    grid-template-columns: 46px minmax(0, 1fr) 46px;
+    grid-template-columns: 42px minmax(0, 1fr) 42px;
     grid-template-areas:
-      "attach input browser"
+      "input input input"
+      "attach browser run"
       "modes modes modes"
-      "reasoning reasoning reasoning"
-      "run run run";
+      "reasoning reasoning reasoning";
   }
 
   .composer-modes {

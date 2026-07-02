@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
   ChevronDown,
@@ -343,7 +343,7 @@ export function ChatPanel({
   }
 
   const messages = activeChat?.messages ?? [];
-  const liveLogs = logs.filter((log) => log.phase !== "prompt");
+  const reasoningLines = buildReasoningLines(logs, t);
 
   return (
     <div className="tab-panel chat-panel-v2">
@@ -435,26 +435,14 @@ export function ChatPanel({
             />
           ))}
 
-          {(isRunning || logs.length > 0) && (
-            <details className="reasoning-card live-reasoning" open={isRunning}>
-              <summary>
-                <span>
-                  <ChevronDown size={16} />
-                  {t("reasoning")}
-                </span>
-                <em>{taskState?.status ?? t("running")}</em>
-              </summary>
-              <div className="chain-steps vertical">{renderChainSteps(logs)}</div>
-              <div className="reasoning-log">
-                {liveLogs.map((log) => (
-                  <p key={log.id} className={log.level}>
-                    <strong>{log.agentName ?? log.phase}</strong>
-                    <span>{log.message}</span>
-                  </p>
-                ))}
-              </div>
-              {taskState?.llmCalls?.length ? <LLMAudit calls={taskState.llmCalls} t={t} /> : null}
-            </details>
+          {(isRunning || reasoningLines.length > 0 || taskState?.error) && (
+            <ReasoningPanel
+              lines={reasoningLines}
+              taskState={taskState}
+              isRunning={isRunning}
+              t={t}
+              language={language}
+            />
           )}
         </section>
 
@@ -552,6 +540,153 @@ export function ChatPanel({
   );
 }
 
+function ReasoningPanel({
+  lines,
+  taskState,
+  isRunning,
+  t,
+  language,
+}: {
+  lines: ReasoningLine[];
+  taskState: TaskState | null;
+  isRunning: boolean;
+  t: (key: CopyKey) => string;
+  language: AppLanguage;
+}) {
+  const visibleLines = lines.length > 0
+    ? lines
+    : [{ id: "thinking", text: t("thinking"), level: "info" as const }];
+  const statusText = isRunning ? t("thinking") : taskState?.status === "failed" ? "Error" : t("answerReady");
+
+  return (
+    <details className="reasoning-card live-reasoning" open={isRunning}>
+      <summary>
+        <span>
+          <ChevronDown size={16} />
+          {t("reasoning")}
+        </span>
+        <em>{statusText}</em>
+      </summary>
+      <div className="reasoning-stream">
+        {visibleLines.map((line) => (
+          <p key={line.id} className={line.level}>
+            {line.text}
+          </p>
+        ))}
+        {taskState?.error && <p className="error">{taskState.error}</p>}
+      </div>
+      {taskState?.llmCalls?.length ? <LLMAudit calls={taskState.llmCalls} t={t} /> : null}
+      <time className="reasoning-time">{taskState ? formatDate(taskState.updatedAt, language) : ""}</time>
+    </details>
+  );
+}
+
+interface ReasoningLine {
+  id: string;
+  text: string;
+  level: AgentLogEvent["level"];
+}
+
+function buildReasoningLines(logs: AgentLogEvent[], t: (key: CopyKey) => string): ReasoningLine[] {
+  const lines: ReasoningLine[] = [];
+  const seen = new Set<string>();
+
+  for (const log of logs) {
+    if (log.phase === "prompt") continue;
+    const agent = log.agentName ?? t("agentRole");
+    let text = "";
+    if (log.phase === "queue") {
+      text = t("reasoningAccepted");
+    } else if (log.phase === "run") {
+      text = agent + " " + t("reasoningAgentRunning");
+    } else if (log.phase === "result") {
+      text = agent + " " + t("reasoningAgentDone");
+    } else if (log.phase === "complete") {
+      text = t("answerReady");
+    } else if (log.phase === "fallback") {
+      text = t("reasoningFallback");
+    } else if (log.level === "error") {
+      text = log.message;
+    }
+    if (!text) continue;
+    const key = log.phase + ":" + (log.agentId ?? "") + ":" + text;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    lines.push({ id: String(log.id), text, level: log.level });
+  }
+
+  return lines.slice(-6);
+}
+
+function MarkdownContent({ content }: { content: string }) {
+  const blocks = splitMarkdownBlocks(content);
+  return (
+    <div className="markdown-content">
+      {blocks.map((block, index) => block.type === "code" ? (
+        <pre key={index} className="markdown-code-block"><code>{block.value}</code></pre>
+      ) : (
+        <MarkdownTextBlock key={index} text={block.value} />
+      ))}
+    </div>
+  );
+}
+
+function MarkdownTextBlock({ text }: { text: string }) {
+  const chunks = text.split(/\n{2,}/).map((chunk) => chunk.trim()).filter(Boolean);
+  return (
+    <>
+      {chunks.map((chunk, index) => {
+        const lines = chunk.split("\n");
+        if (lines.every((line) => /^[-*]\s+/.test(line.trim()))) {
+          return <ul key={index}>{lines.map((line, itemIndex) => <li key={itemIndex}>{renderInlineMarkdown(line.replace(/^[-*]\s+/, ""))}</li>)}</ul>;
+        }
+        if (lines.every((line) => /^\d+[.)]\s+/.test(line.trim()))) {
+          return <ol key={index}>{lines.map((line, itemIndex) => <li key={itemIndex}>{renderInlineMarkdown(line.replace(/^\d+[.)]\s+/, ""))}</li>)}</ol>;
+        }
+        const heading = chunk.match(/^(#{1,3})\s+(.+)$/);
+        if (heading) {
+          const Tag = heading[1].length === 1 ? "h3" : heading[1].length === 2 ? "h4" : "h5";
+          return <Tag key={index}>{renderInlineMarkdown(heading[2])}</Tag>;
+        }
+        return <p key={index}>{renderInlineMarkdown(chunk)}</p>;
+      })}
+    </>
+  );
+}
+
+function renderInlineMarkdown(text: string): ReactNode[] {
+  const parts = text.split(/(\*\*[^*]+\*\*|\x60[^\x60]+\x60|https?:\/\/\S+)/g).filter(Boolean);
+  return parts.map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith("\x60") && part.endsWith("\x60")) {
+      return <code key={index}>{part.slice(1, -1)}</code>;
+    }
+    if (/^https?:\/\//.test(part)) {
+      return <a key={index} href={part} target="_blank" rel="noreferrer">{part}</a>;
+    }
+    return <span key={index}>{part}</span>;
+  });
+}
+
+function splitMarkdownBlocks(content: string): Array<{ type: "text" | "code"; value: string }> {
+  const blocks: Array<{ type: "text" | "code"; value: string }> = [];
+  const fence = String.fromCharCode(96, 96, 96);
+  const pattern = new RegExp(fence + "[^\\n]*\\n?([\\s\\S]*?)" + fence, "g");
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(content)) !== null) {
+    const before = content.slice(lastIndex, match.index);
+    if (before.trim()) blocks.push({ type: "text", value: before });
+    blocks.push({ type: "code", value: match[1].trimEnd() });
+    lastIndex = pattern.lastIndex;
+  }
+  const tail = content.slice(lastIndex);
+  if (tail.trim()) blocks.push({ type: "text", value: tail });
+  return blocks.length ? blocks : [{ type: "text", value: content }];
+}
+
 function ChatMessageBubble({
   message,
   t,
@@ -581,7 +716,7 @@ function ChatMessageBubble({
         <strong>{label}</strong>
         <time>{formatDate(message.createdAt, language)}</time>
       </header>
-      <p>{message.content}</p>
+      <MarkdownContent content={message.content} />
       {message.attachments.length > 0 && (
         <div className="message-attachments">
           {message.attachments.map((attachment) => (

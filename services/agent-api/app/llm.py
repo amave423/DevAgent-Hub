@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import asyncio
 import time
 from typing import Any, Protocol, runtime_checkable
 from urllib.parse import urlparse, urlunparse
@@ -185,10 +186,10 @@ class OpenAIProvider:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-        response = await self._client.post(
+        response = await self._post_json(
             request_url,
             headers=headers,
-            json={
+            payload={
                 "model": model,
                 "messages": messages,
                 "temperature": temperature,
@@ -235,10 +236,10 @@ class OpenAIProvider:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-        response = await self._client.post(
+        response = await self._post_json(
             request_url,
             headers=headers,
-            json={
+            payload={
                 "model": model,
                 "input": messages_to_responses_input(messages),
                 "temperature": temperature,
@@ -298,11 +299,11 @@ class OpenAIProvider:
         }
         if system_parts:
             payload["system"] = "\n\n".join(system_parts)
-        response = await self._client.post(request_url, headers=headers, json=payload)
+        response = await self._post_json(request_url, headers=headers, payload=payload)
         if response.status_code >= 400:
             fallback_url = build_request_url(self.base_url, self.endpoint_path, "/messages")
             if not self.endpoint_path and fallback_url != request_url and response.status_code in {404, 405, 502}:
-                response = await self._client.post(fallback_url, headers=headers, json=payload)
+                response = await self._post_json(fallback_url, headers=headers, payload=payload)
                 request_url = fallback_url
             if response.status_code >= 400:
                 raise RuntimeError(format_provider_error(response, request_url, format_name))
@@ -327,6 +328,17 @@ class OpenAIProvider:
             latencyMs=round((time.perf_counter() - started) * 1000),
             rawUsageAvailable=usage is not None,
         )
+
+    async def _post_json(self, url: str, *, headers: dict[str, str], payload: dict[str, Any]) -> httpx.Response:
+        last_response: httpx.Response | None = None
+        for attempt in range(3):
+            response = await self._client.post(url, headers=headers, json=payload)
+            last_response = response
+            if response.status_code not in {429, 500, 502, 503, 504}:
+                return response
+            if attempt < 2:
+                await asyncio.sleep(0.8 * (attempt + 1))
+        return last_response
 
 
 class MockProvider:
@@ -549,6 +561,8 @@ def format_provider_error(response: httpx.Response, request_url: str, api_format
     if len(compact) > 600:
         compact = compact[:597] + "..."
     hint = "Check API format and endpoint path."
+    if response.status_code in {429, 500, 502, 503, 504}:
+        hint = "The endpoint is reachable, but the provider returned a temporary capacity/server error after retries. Retry later or check provider balance/limits."
     if response.status_code in {404, 405}:
         hint = "The endpoint path looks wrong for this API format. Check Base URL, API format and endpoint path."
     return (
