@@ -374,7 +374,7 @@ function normalizeConfig(config: AgentsConfig): AgentsConfig {
       maxParallelTasks: config.runtime?.maxParallelTasks ?? 2,
       logRetention: config.runtime?.logRetention ?? 2000,
       runnerMode: config.runtime?.runnerMode ?? "auto",
-      agentMode: config.runtime?.agentMode ?? "plan",
+      agentMode: config.runtime?.agentMode ?? "normal",
       actionPolicy: config.runtime?.actionPolicy ?? "confirm",
       reasoningLevel: config.runtime?.reasoningLevel ?? "medium",
       requestTimeoutSeconds: config.runtime?.requestTimeoutSeconds ?? 120,

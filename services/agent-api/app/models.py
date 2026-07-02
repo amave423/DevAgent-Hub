@@ -31,6 +31,7 @@ class TaskStatus(str, Enum):
 
 
 class AgentRunMode(str, Enum):
+    normal = "normal"
     plan = "plan"
     coding = "coding"
     goal = "goal"
@@ -197,7 +198,7 @@ class RuntimeConfig(BaseModel):
     maxParallelTasks: int = Field(default=2, ge=1, le=16)
     logRetention: int = Field(default=2000, ge=100, le=100000)
     runnerMode: Literal["auto", "live", "mock"] = "auto"
-    agentMode: AgentRunMode = AgentRunMode.plan
+    agentMode: AgentRunMode = AgentRunMode.normal
     actionPolicy: ActionPolicy = ActionPolicy.confirm
     reasoningLevel: ReasoningLevel = ReasoningLevel.medium
     requestTimeoutSeconds: int = Field(default=120, ge=5, le=600)
@@ -253,7 +254,7 @@ class TaskState(BaseModel):
     result: str | None = None
     error: str | None = None
     activeAgentId: str | None = None
-    mode: AgentRunMode = AgentRunMode.plan
+    mode: AgentRunMode = AgentRunMode.normal
     actionPolicy: ActionPolicy = ActionPolicy.confirm
     chatId: str | None = None
     llmCalls: list[LLMCallResult] = Field(default_factory=list)
@@ -261,7 +262,7 @@ class TaskState(BaseModel):
 
 class RuntimeSettings(BaseModel):
     theme: Literal["dark", "light"] = "dark"
-    agentMode: AgentRunMode = AgentRunMode.plan
+    agentMode: AgentRunMode = AgentRunMode.normal
     actionPolicy: ActionPolicy = ActionPolicy.confirm
     externalAccess: bool = False
     host: str = "127.0.0.1"

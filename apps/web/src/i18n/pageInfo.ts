@@ -27,9 +27,11 @@ const ruInfo: Record<WorkbenchTab, PageInfoContent> = {
       {
         title: "Режимы",
         items: [
+          "Обычный режим отвечает напрямую без дополнительного сценария планирования или кодинга.",
           "Планирование просит агента сначала разобрать задачу и предложить шаги.",
           "Кодинг предназначен для изменений в workspace, git и терминале.",
-          "Политика действий определяет, нужно ли подтверждать операции с файлами, git, терминалом и браузером.",
+          "Цель фиксирует долгосрочную задачу для последовательной работы.",
+          "Полный доступ - это не режим, а политика действий: она выбирается отдельно в меню подтверждений.",
         ],
       },
       {
@@ -223,9 +225,11 @@ const enInfo: Record<WorkbenchTab, PageInfoContent> = {
       {
         title: "Modes",
         items: [
+          "Normal mode answers directly without an extra planning or coding workflow.",
           "Planning asks the agent to decompose the task before acting.",
           "Coding is for workspace, git and terminal changes.",
-          "The action policy controls whether file, git, terminal and browser actions require approval.",
+          "Goal mode keeps a longer-running objective visible for step-by-step work.",
+          "Full access is not an agent mode; it is selected separately in the action policy menu.",
         ],
       },
       {

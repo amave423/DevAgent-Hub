@@ -40,6 +40,7 @@ def main() -> int:
     thread.start()
 
     base_url = f'http://127.0.0.1:{port}'
+    chat_id = None
 
     try:
         health = wait_for_json(opener, f'{base_url}/health')
@@ -49,6 +50,7 @@ def main() -> int:
         catalog = get_json(opener, f'{base_url}/api/models/catalog')
         workspace = get_json(opener, f'{base_url}/api/workspace/status')
         chat = post_json(opener, f'{base_url}/api/chats', {'title': 'Smoke chat'})
+        chat_id = chat['id']
         run = post_json(opener, f"{base_url}/api/chats/{chat['id']}/run", {
             'content': 'Say hello from the smoke test.',
             'attachmentIds': [],
@@ -85,6 +87,13 @@ def main() -> int:
         print(f"git_repository={workspace['git']['isRepository']}")
         return 0
     finally:
+        if chat_id:
+            try:
+                delete_request = urllib.request.Request(f'{base_url}/api/chats/{chat_id}', method='DELETE')
+                with opener.open(delete_request, timeout=2):
+                    pass
+            except Exception:
+                pass
         server.should_exit = True
         thread.join(timeout=5)
         shutil.rmtree(temp_dir, ignore_errors=True)

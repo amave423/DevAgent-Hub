@@ -542,6 +542,35 @@ select {
   padding: 0 10px;
 }
 
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  min-width: 0;
+  padding: 0 36px 0 12px;
+  cursor: pointer;
+  border-radius: 12px;
+  background-color: var(--panel-2);
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 12px) 50%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
+}
+
+select:hover {
+  border-color: var(--accent);
+  background-color: var(--surface);
+}
+
+select:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
 textarea {
   resize: vertical;
   padding: 11px;
@@ -552,6 +581,7 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(58, 209, 169, 0.14);
 }
 
 .task-composer,
@@ -2150,7 +2180,7 @@ textarea:focus {
 :root[data-theme="light"] textarea {
   color: #17212b;
   border-color: #c8d2dd;
-  background: #ffffff;
+  background-color: #ffffff;
 }
 
 :root[data-theme="light"] .brand span,

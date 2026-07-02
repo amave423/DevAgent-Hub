@@ -98,13 +98,13 @@ export function AgentsPanel({
                 rows={6}
               />
               <footer>
-                <button className="icon-button" onClick={() => moveAgent(agent.id, -1)} disabled={index === 0}>
+                <button className="icon-button" type="button" onClick={() => moveAgent(agent.id, -1)} disabled={index === 0} title={t("moveAgentUp")} aria-label={t("moveAgentUp")}>
                   <ArrowUp size={16} />
                 </button>
-                <button className="icon-button" onClick={() => moveAgent(agent.id, 1)} disabled={index === agents.length - 1}>
+                <button className="icon-button" type="button" onClick={() => moveAgent(agent.id, 1)} disabled={index === agents.length - 1} title={t("moveAgentDown")} aria-label={t("moveAgentDown")}>
                   <ArrowDown size={16} />
                 </button>
-                <button className="danger-button" onClick={() => onChange(agents.filter((item) => item.id !== agent.id))}>
+                <button className="danger-button" type="button" onClick={() => onChange(agents.filter((item) => item.id !== agent.id))}>
                   {t("remove")}
                 </button>
               </footer>

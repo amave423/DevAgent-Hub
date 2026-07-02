@@ -20,8 +20,8 @@ export function PreviewPanel({
       <PanelHeader title={t("previewTitle")} subtitle={t("previewSubtitle")} info={info} infoLabel={t("info")} />
       <div className="url-bar">
         <Globe2 size={16} />
-        <input value={settings.previewUrl} onChange={(event) => patchSettings({ previewUrl: event.target.value })} />
-        <a className="icon-link" href={settings.previewUrl} target="_blank" rel="noreferrer">
+        <input aria-label={t("previewUrl")} value={settings.previewUrl} onChange={(event) => patchSettings({ previewUrl: event.target.value })} />
+        <a className="icon-link" href={settings.previewUrl} target="_blank" rel="noreferrer" title={t("openExternal")} aria-label={t("openExternal")}>
           <ExternalLink size={16} />
         </a>
       </div>

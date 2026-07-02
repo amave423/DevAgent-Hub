@@ -346,6 +346,7 @@ export function ChatPanel({
 
   const messages = activeChat?.messages ?? [];
   const reasoningLines = buildReasoningLines(logs, t);
+  const visibleRunMode: AgentRunMode = config.runtime.agentMode === "full-access" ? "normal" : config.runtime.agentMode;
 
   return (
     <div className="tab-panel chat-panel-v2">
@@ -478,21 +479,21 @@ export function ChatPanel({
               {isUploading ? <Loader2 className="spin" size={18} /> : <Paperclip size={18} />}
             </button>
             <div className="segmented composer-modes" aria-label={t("agentMode")}>
-              <button className={config.runtime.agentMode === "plan" ? "active" : ""} type="button" onClick={() => setMode("plan")} title={t("planMode")}>
+              <button className={visibleRunMode === "normal" ? "active" : ""} type="button" onClick={() => setMode("normal")} title={t("normalMode")}>
                 <Bot size={15} />
+                <span>{t("normalMode")}</span>
+              </button>
+              <button className={visibleRunMode === "plan" ? "active" : ""} type="button" onClick={() => setMode("plan")} title={t("planMode")}>
+                <History size={15} />
                 <span>{t("planMode")}</span>
               </button>
-              <button className={config.runtime.agentMode === "coding" ? "active" : ""} type="button" onClick={() => setMode("coding")} title={t("codingMode")}>
+              <button className={visibleRunMode === "coding" ? "active" : ""} type="button" onClick={() => setMode("coding")} title={t("codingMode")}>
                 <Code2 size={15} />
                 <span>{t("codingMode")}</span>
               </button>
-              <button className={config.runtime.agentMode === "goal" ? "active" : ""} type="button" onClick={() => setMode("goal")} title={t("goalMode")}>
+              <button className={visibleRunMode === "goal" ? "active" : ""} type="button" onClick={() => setMode("goal")} title={t("goalMode")}>
                 <Sparkles size={15} />
                 <span>{t("goalMode")}</span>
-              </button>
-              <button className={config.runtime.agentMode === "full-access" ? "active" : ""} type="button" onClick={() => setMode("full-access")} title={t("fullAccessMode")}>
-                <History size={15} />
-                <span>{t("fullAccessMode")}</span>
               </button>
             </div>
             <label className="compact-select policy-select">

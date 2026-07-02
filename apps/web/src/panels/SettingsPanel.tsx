@@ -589,9 +589,14 @@ export function SettingsPanel({
           <div className="settings-grid">
             <label className="field">
               <span>{t("agentMode")}</span>
-              <select value={config.runtime.agentMode} onChange={(event) => patchRuntime({ agentMode: event.target.value as AgentRunMode })}>
+              <select
+                value={config.runtime.agentMode === "full-access" ? "normal" : config.runtime.agentMode}
+                onChange={(event) => patchRuntime({ agentMode: event.target.value as AgentRunMode })}
+              >
+                <option value="normal">{t("normalMode")}</option>
                 <option value="plan">{t("planMode")}</option>
                 <option value="coding">{t("codingMode")}</option>
+                <option value="goal">{t("goalMode")}</option>
               </select>
             </label>
             <label className="field">
