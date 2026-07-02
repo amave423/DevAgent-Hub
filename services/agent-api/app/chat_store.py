@@ -134,6 +134,26 @@ class ChatStore:
             size=len(data),
         )
 
+    def conversation_context(self, chat_id: str, limit: int = 12, max_chars: int = 24000) -> str:
+        session = self.get(chat_id)
+        messages = session.messages[-limit:]
+        parts: list[str] = []
+        total = 0
+        for message in messages:
+            if message.role == "tool":
+                content = compact_text(message.content, 1200)
+            else:
+                content = compact_text(message.content, 4000)
+            if not content:
+                continue
+            line = f"[{message.role}] {content}"
+            total += len(line)
+            if total > max_chars:
+                parts.append("[history truncated]")
+                break
+            parts.append(line)
+        return "\n\n".join(parts)
+
     def attachment_context(self, chat_id: str, attachment_ids: Iterable[str]) -> str:
         selected = [attachment for attachment in self._all_attachments(chat_id) if attachment.id in set(attachment_ids)]
         parts = []
@@ -221,6 +241,13 @@ def last_message_preview(messages: list[ChatMessage]) -> str:
         return ""
     text = " ".join(messages[-1].content.strip().split())
     return text[:117] + "..." if len(text) > 120 else text
+
+
+def compact_text(value: str, limit: int) -> str:
+    text = " ".join(value.strip().split())
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 15)] + "... [truncated]"
 
 
 def sanitize_filename(filename: str) -> str:

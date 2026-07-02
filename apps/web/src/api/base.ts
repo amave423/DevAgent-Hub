@@ -65,6 +65,20 @@ export async function devHubFetch(path: string, init?: RequestInit, retry = true
   return response;
 }
 
+export async function readErrorMessage(response: Response): Promise<string> {
+  const body = await response.text();
+  if (!body) return `HTTP ${response.status}`;
+  try {
+    const parsed = JSON.parse(body) as { detail?: unknown; message?: unknown };
+    const detail = parsed.detail ?? parsed.message;
+    if (typeof detail === "string") return detail;
+    if (detail != null) return JSON.stringify(detail);
+  } catch {
+    // Plain text or HTML error body.
+  }
+  return body;
+}
+
 function isLoopback(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
 }

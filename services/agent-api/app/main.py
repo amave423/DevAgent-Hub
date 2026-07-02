@@ -281,7 +281,11 @@ async def run_chat(chat_id: str, request: ChatRunRequest) -> RunAgentsResponse:
                 metadata={"tool": "browser", "error": str(exc)},
             )
 
-    task_parts = [request.content]
+    conversation_context = chat_store.conversation_context(chat_id)
+    task_parts = []
+    if conversation_context:
+        task_parts.append("Previous chat context:\n" + conversation_context)
+    task_parts.append("Current user request:\n" + request.content)
     if attachment_context:
         task_parts.append("Attached files:\n" + attachment_context)
     if search_context:
@@ -463,6 +467,22 @@ async def retry_model_download(download_id: str) -> ModelDownloadState:
 async def delete_local_model(source: str, model_ref: str) -> AgentsConfig:
     try:
         return await model_manager.delete_local_model(source, model_ref)
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.delete("/api/models/cloud/all", response_model=AgentsConfig)
+async def delete_all_cloud_models() -> AgentsConfig:
+    try:
+        return model_manager.delete_all_cloud_models()
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.delete("/api/models/cloud/{model_ref:path}", response_model=AgentsConfig)
+async def delete_cloud_model(model_ref: str) -> AgentsConfig:
+    try:
+        return model_manager.delete_cloud_model(model_ref)
     except Exception as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -875,15 +895,28 @@ def should_auto_browse(content: str) -> bool:
     text = content.lower()
     markers = (
         "открой сайт",
+        "открой страницу",
         "прочитай сайт",
         "прочитай страницу",
+        "зайди на сайт",
+        "посмотри в интернете",
+        "найди в интернете",
+        "поиск в интернете",
+        "актуальн",
+        "сегодня",
         "скачай",
         "download",
         "open the site",
+        "open this page",
         "read this page",
         "read the page",
+        "search the web",
+        "browse",
+        "latest",
+        "current",
+        "today",
     )
-    return bool(extract_urls(content)) and any(marker in text for marker in markers)
+    return any(marker in text for marker in markers) or bool(extract_urls(content))
 
 
 def should_auto_download(content: str) -> bool:

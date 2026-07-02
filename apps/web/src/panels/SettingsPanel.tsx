@@ -1,8 +1,10 @@
-import { CheckCircle2, Cloud, Cpu, Download, HardDrive, Loader2, RefreshCcw, ShieldCheck, TestTube2, Trash2 } from "lucide-react";
+import { CheckCircle2, Cloud, Cpu, Download, HardDrive, Loader2, RefreshCcw, Search, ShieldCheck, TestTube2, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ProgressBar } from "../components/ProgressBar";
 import {
   addCloudModel,
+  deleteAllCloudModels,
+  deleteCloudModel,
   deleteLocalModel,
   getModelCatalog,
   listHuggingFaceFiles,
@@ -96,6 +98,7 @@ export function SettingsPanel({
   );
   const displayedLocalModels = searchResults?.source === localSource ? searchResults.models : localModels;
   const selectedLocalModel = displayedLocalModels.find((model) => model.id === selectedLocalModelId) ?? displayedLocalModels[0];
+  const cloudModels = useMemo(() => config.models.filter((model) => model.kind === "cloud"), [config.models]);
   const selectedLocalModelAlreadyAvailable = Boolean(
     selectedLocalModel && config.models.some((model) => model.id === selectedLocalModel.id || model.name === selectedLocalModel.modelName),
   );
@@ -209,6 +212,30 @@ export function SettingsPanel({
       await refreshCatalog();
     } catch (caught) {
       setSettingsNotice(caught instanceof Error ? caught.message : "Could not delete model.");
+    }
+  }
+
+  async function handleDeleteCloudModel(modelId: string) {
+    if (!window.confirm(t("deleteCloudModelConfirm"))) return;
+    setSettingsNotice(null);
+    try {
+      const saved = await deleteCloudModel(modelId);
+      patchConfig(() => saved);
+      setSettingsNotice(t("modelDeleted"));
+    } catch (caught) {
+      setSettingsNotice(caught instanceof Error ? caught.message : "Could not delete cloud model.");
+    }
+  }
+
+  async function handleDeleteAllCloudModels() {
+    if (!window.confirm(t("deleteAllCloudModelsConfirm"))) return;
+    setSettingsNotice(null);
+    try {
+      const saved = await deleteAllCloudModels();
+      patchConfig(() => saved);
+      setSettingsNotice(t("cloudModelsDeleted"));
+    } catch (caught) {
+      setSettingsNotice(caught instanceof Error ? caught.message : "Could not delete cloud models.");
     }
   }
 
@@ -358,7 +385,7 @@ export function SettingsPanel({
             <div className="field action-field">
               <span>&nbsp;</span>
               <button className="secondary-button" onClick={() => void handleSearchModels()} disabled={isSearchingModels}>
-                {isSearchingModels ? <Loader2 className="spin" size={16} /> : <Download size={16} />}
+                {isSearchingModels ? <Loader2 className="spin" size={16} /> : <Search size={16} />}
                 {t("searchModels")}
               </button>
             </div>
@@ -378,7 +405,7 @@ export function SettingsPanel({
             <div className="model-detail-row">
               <HardDrive size={18} />
               <span>
-                {localizedModelDescription(selectedLocalModel.id, selectedLocalModel.description, settings.language)} RAM {selectedLocalModel.requirements.ramGb}GB / disk {selectedLocalModel.requirements.diskGb}GB
+                {localizedModelDescription(selectedLocalModel.id, selectedLocalModel.description, settings.language)} {formatRequirements(selectedLocalModel, t)}
               </span>
               {selectedLocalModelAlreadyAvailable && <em>{t("modelAlreadyAvailable")}</em>}
             </div>
@@ -507,7 +534,30 @@ export function SettingsPanel({
               <Cloud size={16} />
               {t("addCloudModel")}
             </button>
+            <button className="danger-button" onClick={() => void handleDeleteAllCloudModels()} disabled={cloudModels.length === 0}>
+              <Trash2 size={16} />
+              {t("deleteAllCloudModels")}
+            </button>
           </div>
+
+          {cloudModels.length > 0 && (
+            <div className="cloud-model-list">
+              <h4>{t("cloudModelsInConfig")}</h4>
+              {cloudModels.map((model) => (
+                <article className="cloud-model-row" key={model.id}>
+                  <div>
+                    <strong>{model.name}</strong>
+                    <span>{model.modelName || model.id} / {model.provider}</span>
+                    {model.baseUrl && <small>{model.baseUrl}</small>}
+                  </div>
+                  <button className="danger-button compact-button" type="button" onClick={() => void handleDeleteCloudModel(model.id)}>
+                    <Trash2 size={15} />
+                    {t("deleteModel")}
+                  </button>
+                </article>
+              ))}
+            </div>
+          )}
         </section>
 
         <section>
@@ -560,6 +610,16 @@ export function SettingsPanel({
       </div>
     </div>
   );
+}
+
+function formatRequirements(model: { requirements: { ramGb: number; diskGb: number }; sizeBytes?: number | null }, t: (key: CopyKey) => string): string {
+  const ram = model.requirements.ramGb > 0 ? `RAM ${model.requirements.ramGb}GB` : `RAM ${t("unknownRequirement")}`;
+  const disk = model.requirements.diskGb > 0
+    ? `disk ${model.requirements.diskGb}GB`
+    : model.sizeBytes
+      ? `disk ${Math.max(1, Math.ceil(model.sizeBytes / 1024 / 1024 / 1024))}GB`
+      : `disk ${t("unknownRequirement")}`;
+  return `${ram} / ${disk}`;
 }
 
 function localizedModelDescription(id: string, fallback: string, language: DevHubSettings["language"]): string {

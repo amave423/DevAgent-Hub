@@ -295,6 +295,24 @@ class ModelManager:
             return self._delete_huggingface_model(decoded_ref)
         raise ValueError(f"Unsupported local model source: {source}")
 
+    def delete_cloud_model(self, model_ref: str) -> AgentsConfig:
+        decoded_ref = urllib.parse.unquote(model_ref)
+
+        def matches(model: AgentModel) -> bool:
+            return (
+                model.kind == ModelKind.cloud
+                and (
+                    model.id == decoded_ref
+                    or model.name == decoded_ref
+                    or (model.modelName or "") == decoded_ref
+                )
+            )
+
+        return self._remove_models(matches)
+
+    def delete_all_cloud_models(self) -> AgentsConfig:
+        return self._remove_models(lambda model: model.kind == ModelKind.cloud)
+
     def add_cloud_model(self, request: AddCloudModelRequest) -> AgentsConfig:
         provider = slugify(request.provider or "custom") or "custom"
         model_id = slugify(request.id or f"{provider}-{request.name}")
@@ -603,8 +621,16 @@ class ModelManager:
 
     def _remove_models(self, predicate) -> AgentsConfig:
         config = self.config_store.load()
+        removed_ids = {current.id for current in config.models if predicate(current)}
         models = [current for current in config.models if not predicate(current)]
-        return self.config_store.save(config.model_copy(update={"models": models}))
+        fallback_model_id = models[0].id if models else ""
+        agents = [
+            agent.model_copy(update={"modelId": fallback_model_id})
+            if agent.modelId in removed_ids and fallback_model_id
+            else agent
+            for agent in config.agents
+        ]
+        return self.config_store.save(config.model_copy(update={"models": models, "agents": agents}))
 
     def _update(self, download_id: str, **patch: object) -> None:
         current = self.downloads[download_id]

@@ -8,14 +8,13 @@ import type {
   WorkspaceActionResponse,
   WorkspaceStatus,
 } from "../types";
-import { devHubFetch } from "./base";
+import { devHubFetch, readErrorMessage } from "./base";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await devHubFetch(path, init);
 
   if (!response.ok) {
-    const details = await response.text();
-    throw new Error(details || `HTTP ${response.status}`);
+    throw new Error(await readErrorMessage(response));
   }
 
   return response.json() as Promise<T>;

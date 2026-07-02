@@ -10,14 +10,13 @@ import type {
   ModelDownloadState,
   ModelSearchResponse,
 } from "../types";
-import { devHubFetch } from "./base";
+import { devHubFetch, readErrorMessage } from "./base";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await devHubFetch(path, init);
 
   if (!response.ok) {
-    const details = await response.text();
-    throw new Error(details || `HTTP ${response.status}`);
+    throw new Error(await readErrorMessage(response));
   }
 
   return response.json() as Promise<T>;
@@ -59,6 +58,18 @@ export function retryLocalModelDownload(downloadId: string): Promise<ModelDownlo
 
 export function deleteLocalModel(source: LocalModelSource, modelRef: string): Promise<AgentsConfig> {
   return request<AgentsConfig>(`/api/models/local/${encodeURIComponent(source)}/${encodeURIComponent(modelRef)}`, {
+    method: "DELETE",
+  });
+}
+
+export function deleteCloudModel(modelRef: string): Promise<AgentsConfig> {
+  return request<AgentsConfig>(`/api/models/cloud/${encodeURIComponent(modelRef)}`, {
+    method: "DELETE",
+  });
+}
+
+export function deleteAllCloudModels(): Promise<AgentsConfig> {
+  return request<AgentsConfig>("/api/models/cloud/all", {
     method: "DELETE",
   });
 }

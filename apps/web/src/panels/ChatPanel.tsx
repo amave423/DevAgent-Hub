@@ -11,7 +11,6 @@ import {
   Paperclip,
   Pencil,
   Plus,
-  RotateCcw,
   Send,
   Sparkles,
   StopCircle,
@@ -259,31 +258,25 @@ export function ChatPanel({
     URL.revokeObjectURL(url);
   }
 
-  function handleRetryLast() {
-    if (!activeChat || isRunning) return;
-    const lastUser = [...activeChat.messages].reverse().find((m) => m.role === "user");
-    if (!lastUser) return;
-    setTaskText(lastUser.content);
-  }
-
-  function handleRegenerate() {
-    if (!activeChat || isRunning) return;
-    const lastUser = [...activeChat.messages].reverse().find((m) => m.role === "user");
-    if (!lastUser) return;
-    void onRun(lastUser.content, {
+  function handleRegenerateFromMessage(message: ChatMessage) {
+    if (!activeChat || isRunning || message.role !== "user") return;
+    void Promise.resolve(onRun(message.content, {
       chatId: activeChat.id,
       agentIds: enabledAgents.map((agent) => agent.id),
       browserAccess: browserAccessEnabledForRun,
-    });
+    })).then(() => refreshActiveChat(activeChat.id));
   }
 
-  function handleContinue() {
-    if (!activeChat || isRunning) return;
-    void onRun("Continue from where we left off.", {
+  function handleContinueFromMessage(message: ChatMessage) {
+    if (!activeChat || isRunning || message.role !== "user") return;
+    const prompt = language === "ru"
+      ? `Продолжи работу по этому сообщению, учитывая предыдущую историю чата:\n\n${message.content}`
+      : `Continue working on this message, using the previous chat history:\n\n${message.content}`;
+    void Promise.resolve(onRun(prompt, {
       chatId: activeChat.id,
       agentIds: enabledAgents.map((agent) => agent.id),
       browserAccess: browserAccessEnabledForRun,
-    });
+    })).then(() => refreshActiveChat(activeChat.id));
   }
 
   async function handleAttachFiles(files: FileList | null) {
@@ -431,7 +424,15 @@ export function ChatPanel({
             </div>
           )}
           {messages.map((message) => (
-            <ChatMessageBubble key={message.id} message={message} t={t} language={language} />
+            <ChatMessageBubble
+              key={message.id}
+              message={message}
+              t={t}
+              language={language}
+              isRunning={isRunning}
+              onRegenerate={handleRegenerateFromMessage}
+              onContinue={handleContinueFromMessage}
+            />
           ))}
 
           {(isRunning || logs.length > 0) && (
@@ -523,17 +524,7 @@ export function ChatPanel({
               placeholder={t("taskPlaceholder")}
               rows={1}
             />
-            <div className="composer-actions-group">
-              <button className="icon-button" type="button" title={t("retryChat")} onClick={() => handleRetryLast()} disabled={isRunning || !activeChat?.messages.length}>
-                <RotateCcw size={16} />
-              </button>
-              <button className="icon-button" type="button" title={t("regenerateChat")} onClick={() => handleRegenerate()} disabled={isRunning || !activeChat?.messages.length}>
-                <Sparkles size={16} />
-              </button>
-              <button className="icon-button" type="button" title={t("continueChat")} onClick={() => handleContinue()} disabled={isRunning}>
-                <History size={16} />
-              </button>
-            </div>
+
             <button
               className={`icon-button search-run-button ${browserAccessEnabledForRun ? "active" : ""}`}
               type="button"
@@ -565,10 +556,16 @@ function ChatMessageBubble({
   message,
   t,
   language,
+  isRunning,
+  onRegenerate,
+  onContinue,
 }: {
   message: ChatMessage;
   t: (key: CopyKey) => string;
   language: AppLanguage;
+  isRunning: boolean;
+  onRegenerate: (message: ChatMessage) => void;
+  onContinue: (message: ChatMessage) => void;
 }) {
   const label =
     message.role === "user" ? t("user") :
@@ -593,6 +590,18 @@ function ChatMessageBubble({
               {attachment.name}
             </span>
           ))}
+        </div>
+      )}
+      {message.role === "user" && (
+        <div className="message-actions">
+          <button type="button" onClick={() => onRegenerate(message)} disabled={isRunning}>
+            <Sparkles size={14} />
+            {t("regenerateChat")}
+          </button>
+          <button type="button" onClick={() => onContinue(message)} disabled={isRunning}>
+            <History size={14} />
+            {t("continueChat")}
+          </button>
         </div>
       )}
       {message.llmCalls.length > 0 && <LLMAudit calls={message.llmCalls} t={t} />}

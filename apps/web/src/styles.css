@@ -1698,7 +1698,7 @@ textarea:focus {
   grid-template-columns: 46px minmax(280px, 1fr) 46px auto;
   grid-template-areas:
     "attach input browser run"
-    ". modes actions reasoning";
+    ". modes reasoning reasoning";
   align-items: stretch;
   gap: 8px;
 }
@@ -2250,7 +2250,6 @@ textarea:focus {
       "attach input browser"
       "modes modes modes"
       "reasoning reasoning reasoning"
-      "actions actions actions"
       "run run run";
   }
 
@@ -2279,4 +2278,80 @@ textarea:focus {
   .composer-actions-group .icon-button {
     flex: 1;
   }
+}
+
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.message-actions button,
+.compact-button {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--muted);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.message-actions button:hover,
+.compact-button:hover {
+  color: var(--text);
+  border-color: var(--accent-strong);
+}
+
+.message-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cloud-model-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.cloud-model-list h4 {
+  margin: 0 0 2px;
+  font-size: 13px;
+}
+
+.cloud-model-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.cloud-model-row div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.cloud-model-row span,
+.cloud-model-row small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cloud-model-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

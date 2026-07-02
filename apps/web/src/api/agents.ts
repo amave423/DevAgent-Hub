@@ -1,5 +1,5 @@
 import type { AgentLogEvent, AgentsConfig, RunAgentsResponse, TaskState } from "../types";
-import { apiBaseUrl, authQuery, devHubFetch } from "./base";
+import { apiBaseUrl, authQuery, devHubFetch, readErrorMessage } from "./base";
 
 // Re-export TaskState for convenience
 export type { TaskState };
@@ -8,8 +8,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await devHubFetch(path, init);
 
   if (!response.ok) {
-    const details = await response.text();
-    throw new Error(details || `HTTP ${response.status}`);
+    throw new Error(await readErrorMessage(response));
   }
 
   return response.json() as Promise<T>;
