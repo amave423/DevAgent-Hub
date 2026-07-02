@@ -1,0 +1,20 @@
+{
+  "models": [
+    {
+      "name": "Example reseller model",
+      "modelName": "deepseek-chat",
+      "provider": "custom",
+      "baseUrl": "https://api.example.com/v1",
+      "apiKey": "sk-example",
+      "apiFormat": "auto"
+    },
+    {
+      "name": "Example full URL model",
+      "modelName": "claude-opus-4-8",
+      "provider": "custom",
+      "baseUrl": "https://api.example.com/v1/messages",
+      "apiKey": "sk-example",
+      "apiFormat": "anthropic-messages"
+    }
+  ]
+}

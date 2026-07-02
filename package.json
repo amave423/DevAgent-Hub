@@ -19,14 +19,22 @@
     "dist:installer:linux": "npm --workspace installer run dist:linux",
     "install:cli": "node installer/cli.js",
     "start:api": "uvicorn app.main:app --reload --reload-exclude=.tools/* --host 0.0.0.0 --port 8000 --app-dir services/agent-api",
+    "start:api:e2e": "node scripts/run_python_module.js uvicorn app.main:app --host 127.0.0.1 --port 8000 --app-dir services/agent-api",
     "typecheck": "npm --workspace apps/web run typecheck",
     "smoke:api": "node scripts/run_python_script.js scripts/smoke_devhub_api.py",
     "smoke:installer": "node scripts\\smoke_installer_prepare.js && node scripts\\smoke_installer_runner.js",
     "smoke:installer-runner": "node scripts\\smoke_installer_runner.js",
     "test:url-builder": "python scripts/test_url_builder.py",
-    "verify": "npm run check:installer && npm run smoke:installer && npm run typecheck && npm run smoke:api && npm run test:url-builder"
+    "verify": "npm run check:installer && npm run smoke:installer && npm run typecheck && npm run smoke:api && npm run test:url-builder",
+    "e2e": "node scripts/e2e_run.js",
+    "e2e:pw": "playwright test",
+    "e2e:headed": "node scripts/e2e_run.js --headed",
+    "e2e:install": "playwright install chromium"
   },
   "engines": {
     "node": ">=22.12"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
   }
 }

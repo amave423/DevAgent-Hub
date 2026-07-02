@@ -33,3 +33,6 @@ installer/dist/
 vendor/
 du.exe.stackdump
 примеры неоффициальных апи.txt
+playwright-report/
+test-results/
+e2e/api-models.local.json
